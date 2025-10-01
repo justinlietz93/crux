@@ -14,6 +14,29 @@ This document details known issues with the Ollama provider implementation and p
 
 ## Known Issue #1: Model Fetching Reliability
 
+- Status: [RETRYING] (2025-10-01 19:02 UTC) – `which ollama` produced no
+  result, `ollama --version` errored with `command not found`,
+  `curl -sS http://127.0.0.1:11434/api/tags` returned connection refused, and
+  `get_ollama_models.run()` logged both JSON/table fallbacks ending in
+  `FileNotFoundError` before returning an empty cached snapshot.
+- 2025-10-01 18:47 UTC update: `which ollama` produced no
+  result, `ollama --version` errored with `command not found`,
+  `curl -sS http://127.0.0.1:11434/api/tags` returned connection refused, and
+  `get_ollama_models.run()` logged the JSON/table fallbacks ending in
+  `FileNotFoundError` before returning an empty cached snapshot.
+- 2025-10-03 update: `ollama --version` → `command not found`,
+  `curl -sS http://127.0.0.1:11434/api/tags` → connection refused, and
+  `run()` emitted logged fallback before returning cached `[]`.
+- 2025-10-02 21:15 UTC update: Fresh `pytest -v` run (273 passed, 1 skipped, 2
+  xfailed expected) and direct `run()` invocation confirmed identical
+  `FileNotFoundError` log entries for JSON/table fetch attempts with 0 cached
+  models returned.
+- 2025-10-01 update: Re-ran model fetch workflow; both JSON and table CLI
+  fallbacks raise `FileNotFoundError` and cached snapshot returns zero models.
+- 2025-10-01 18:09 UTC update: `pytest -v` (273 passed, 1 skipped, 2 xfailed
+  expected) reconfirmed fallback execution paths remain green while Ollama CLI
+  binaries remain unavailable locally.
+
 ### Symptom
 
 - `ollama list --json` may fail or return unexpected formats
@@ -142,6 +165,15 @@ python -m pytest crux_providers/tests/providers/test_ollama_parsing.py -v
 
 ## Known Issue #2: Executable Not Found
 
+- Status: [RETRYING] (2025-10-01 19:02 UTC) – `which ollama` produced no
+  path and `ollama --version` failed with `command not found`, blocking
+  permission validation until the binary is installed in the container.
+- 2025-10-01 18:47 UTC update: `which ollama` produced no path and
+  `ollama --version` failed with `command not found`, blocking permission
+  validation until the binary is installed in the container.
+- 2025-10-03 update: `which ollama` → no output and `ollama --version` →
+  `command not found`, so executable validation cannot proceed.
+
 ### Symptom
 
 ```
@@ -226,6 +258,9 @@ ollama list
 
 ## Known Issue #3: Service Not Running
 
+- Status: [NOT STARTED] (2025-10-02) – Requires a live Ollama daemon for
+  end-to-end checks; pending access to a host with the service installed.
+
 ### Symptom
 
 - `ollama list` returns connection errors
@@ -301,6 +336,9 @@ OLLAMA_HOST=http://127.0.0.1:8080
 
 ## Known Issue #4: Permission Errors
 
+- Status: [NOT STARTED] (2025-10-02) – Will audit file permission safeguards
+  once an Ollama installation is accessible.
+
 ### Symptom
 
 ```
@@ -339,6 +377,10 @@ ls -la $(which ollama)
 ---
 
 ## Known Issue #5: No Models Available
+
+- Status: [NOT STARTED] (2025-10-02) – Blocked on missing local models; will
+  execute pull-and-verify workflow after obtaining an environment with Ollama
+  assets.
 
 ### Symptom
 

@@ -47,7 +47,35 @@ from .helpers import (
     chat_impl as _chat_impl,
     stream_chat_impl as _stream_chat_impl,
 )
+from ..config import get_provider_config
 from ..config.defaults import OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_MODEL
+
+
+def _coerce_non_empty_str(candidate: Any, fallback: str) -> str:
+    """Return a sanitized string value derived from ``candidate``.
+
+    Parameters
+    ----------
+    candidate:
+        Arbitrary override sourced from configuration layers (defaults,
+        environment variables, or explicit overrides).
+    fallback:
+        Provider default used when the candidate is missing or empty.
+
+    Returns
+    -------
+    str
+        Non-empty string derived from ``candidate``; falls back to ``fallback``
+        when sanitization yields an empty result.
+    """
+
+    if isinstance(candidate, str):
+        stripped = candidate.strip()
+        return stripped or fallback
+    if candidate is None:
+        return fallback
+    coerced = str(candidate).strip()
+    return coerced or fallback
 
 
 class OllamaProvider(LLMProvider, SupportsJSONOutput, HasDefaultModel):
@@ -57,18 +85,37 @@ class OllamaProvider(LLMProvider, SupportsJSONOutput, HasDefaultModel):
         model: Optional[str] = None,
         registry: Any | None = None,
     ):
-        """Initialize the Ollama provider.
+        """Initialize the Ollama provider with configuration overrides.
 
-        Parameters:
-            host: Base URL of the Ollama daemon (default `http://localhost:11434`).
-            model: Default model name to use when a request doesn't specify one.
-            registry: Optional DI/service registry (reserved for future use).
+        Parameters
+        ----------
+        host:
+            Explicit base URL for the Ollama daemon. When omitted, the provider
+            resolves the value from the layered configuration stack (defaults,
+            optional config file, environment variables such as ``OLLAMA_HOST``)
+            and finally falls back to ``http://localhost:11434``.
+        model:
+            Default model name for chat requests lacking an explicit model. The
+            same layered configuration resolution applies, honoring
+            ``OLLAMA_MODEL`` or config-file overrides before the baked-in
+            default of ``gpt-oss:20b``.
+        registry:
+            Optional dependency injection registry placeholder. Present for
+            interface parity; not used directly today.
 
-        Side effects:
-            Initializes a logger instance for normalized logging.
+        Side Effects
+        ------------
+        Initializes a structured logger for provider operations.
         """
-        self._host = host or OLLAMA_DEFAULT_HOST
-        self._model = model or OLLAMA_DEFAULT_MODEL
+        cfg = get_provider_config(
+            "ollama",
+            overrides={"host": host, "model": model},
+        )
+        resolved_host = _coerce_non_empty_str(cfg.get("host"), OLLAMA_DEFAULT_HOST)
+        resolved_model = _coerce_non_empty_str(cfg.get("model"), OLLAMA_DEFAULT_MODEL)
+
+        self._host = resolved_host
+        self._model = resolved_model
         self._logger = get_logger("providers.ollama")
 
     @property

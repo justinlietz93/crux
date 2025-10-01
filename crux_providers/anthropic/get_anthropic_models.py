@@ -212,7 +212,7 @@ def run() -> List[Dict[str, Any]]:  # sourcery skip: none-compare
     )
 
     key = _resolve_key()
-    if not key or anthropic == None:
+    if not key or anthropic is None:
         reason = "anthropic_sdk_unavailable" if key else "missing_api_key"
         normalized_log_event(
             _LOGGER,
@@ -220,7 +220,11 @@ def run() -> List[Dict[str, Any]]:  # sourcery skip: none-compare
             ctx,
             phase="start",
             error=reason,
-            error_code=(None if key else ErrorCode.CONFIG.value),
+            error_code=(
+                None
+                if key
+                else ErrorCode.AUTH.value
+            ),
             tokens=None,
             emitted=None,
             attempt=None,

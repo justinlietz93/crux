@@ -1,0 +1,14 @@
+pandas # Data analysis library
+github-dlr # For pulling individual files from GitHub repositories
+
+# Providers
+openai
+anthropic
+google-generativeai
+ollama
+openrouter
+pytest
+pytest-cov
+fastapi
+uvicorn
+pydantic>=2.7,<3

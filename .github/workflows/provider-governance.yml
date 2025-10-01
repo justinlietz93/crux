@@ -1,0 +1,32 @@
+name: Provider Governance
+
+on:
+  pull_request:
+    paths:
+      - 'crux_providers/**'
+      - '.github/workflows/provider-governance.yml'
+  push:
+    branches: [ main, backend-work ]
+    paths:
+      - 'crux_providers/**'
+      - '.github/workflows/provider-governance.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install runtime deps
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Run provider governance checks
+        run: |
+          python crux_providers/ci_checks/validate_providers.py

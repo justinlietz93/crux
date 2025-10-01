@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vector-memory"
+version = "0.1.0"
+description = "Standards-driven vector memory (Ollama + Qdrant) with clean architecture"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Workspace", email = "noreply@example.com" }]
+license = { text = "MIT" }
+dependencies = [
+  "requests>=2.31.0",
+]
+
+[project.urls]
+Homepage = "https://example.invalid"
+
+[project.scripts]
+vector-memory = "vector_memory.cli.main:main"
+vector-memory-mcp = "vector_memory.mcp.api:vector_query"
+vector-memory-ui = "vector_memory.ui.app:run"
+
+[tool.setuptools]
+packages = ["vector_memory", "vector_memory.domain", "vector_memory.application", "vector_memory.application.use_cases", "vector_memory.infrastructure", "vector_memory.infrastructure.ollama", "vector_memory.infrastructure.qdrant", "vector_memory.ingestion", "vector_memory.cli", "vector_memory.mcp"]
+include-package-data = true
+zip-safe = false

@@ -1,0 +1,32 @@
+{
+  "defaults": {
+    "max_files": 3,
+    "max_loc": {
+      "client.py": 500
+    },
+    "required_files": ["README.md"],
+    "allowed_files": ["client.py", "README.md", "__init__.py"],
+    "ignore_dirs": ["__pycache__"],
+    "ignore_files": ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.json"]
+  },
+  "overrides": {
+    "openrouter": {
+      "max_files": 7,
+      "allowed_files": [
+        "client.py",
+        "helpers.py",
+        "chat_helpers.py",
+        "stream_helpers.py",
+        "get_openrouter_models.py",
+        "README.md",
+        "__init__.py"
+      ],
+      "max_loc": {
+        "client.py": 500,
+        "helpers.py": 250,
+        "chat_helpers.py": 250,
+        "stream_helpers.py": 250
+      }
+    }
+  }
+}

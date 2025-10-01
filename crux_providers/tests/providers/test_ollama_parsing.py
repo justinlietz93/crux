@@ -6,6 +6,7 @@ spacing variations and with/without headers.
 
 from __future__ import annotations
 
+from crux_providers.ollama import get_ollama_models as gom
 from crux_providers.ollama.get_ollama_models import _parse_ollama_list_table
 
 
@@ -45,3 +46,64 @@ def test_parse_without_header_assumes_first_column_name() -> None:
     assert items[0]["id"] == "llama3.1:8b"
     # Without header, extra fields may be absent; ensure graceful presence of essentials
     assert set(items[0].keys()) >= {"id", "name"}
+
+
+def test_run_uses_http_fallback_when_cli_missing(monkeypatch) -> None:
+    """HTTP fallback is used when the CLI is unavailable."""
+
+    def fake_cli() -> list[dict[str, str]]:
+        raise FileNotFoundError("ollama missing")
+
+    http_models = [{"id": "llama3", "name": "llama3"}]
+
+    def fake_http() -> list[dict[str, str]]:
+        return http_models
+
+    def fake_save(provider: str, models, *, fetched_via: str, metadata: dict) -> None:
+        assert provider == "ollama"
+        assert fetched_via == "ollama_http"
+        assert metadata["source"] == "ollama_http"
+
+    class _SentinelSnapshot:
+        def __init__(self) -> None:  # pragma: no cover - defensive guard
+            raise AssertionError("cache should not be used when HTTP succeeds")
+
+    monkeypatch.setattr(gom, "_fetch_via_cli", fake_cli)
+    monkeypatch.setattr(gom, "_fetch_via_http_api", fake_http)
+    monkeypatch.setattr(gom, "save_provider_models", fake_save)
+    monkeypatch.setattr(gom, "load_cached_models", lambda provider: _SentinelSnapshot())
+
+    models = gom.run()
+    assert models == http_models
+
+
+def test_fetch_via_http_api_normalizes_entries(monkeypatch) -> None:
+    """HTTP API payloads are normalized to include id/name pairs."""
+
+    payload = {"models": [{"model": "llama3", "digest": "sha256:abc", "size": "4 GB"}]}
+
+    class DummyResponse:
+        def __init__(self, data):
+            self._data = data
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return self._data
+
+    class DummyClient:
+        def __init__(self, data):
+            self._data = data
+
+        def get(self, path):
+            assert path == "/api/tags"
+            return DummyResponse(self._data)
+
+    monkeypatch.setattr(gom, "get_httpx_client", lambda base_url, purpose: DummyClient(payload))
+    monkeypatch.setattr(gom, "get_provider_config", lambda provider: {"host": "http://127.0.0.1:11434"})
+
+    items = gom._fetch_via_http_api()
+    assert items[0]["id"] == "llama3"
+    assert items[0]["name"] == "llama3"
+    assert items[0]["digest"] == "sha256:abc"

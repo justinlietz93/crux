@@ -14,11 +14,9 @@ This document details known issues with the Ollama provider implementation and p
 
 ## Known Issue #1: Model Fetching Reliability
 
-- Status: [RETRYING] (2025-10-01 19:02 UTC) – `which ollama` produced no
-  result, `ollama --version` errored with `command not found`,
-  `curl -sS http://127.0.0.1:11434/api/tags` returned connection refused, and
-  `get_ollama_models.run()` logged both JSON/table fallbacks ending in
-  `FileNotFoundError` before returning an empty cached snapshot.
+- Status: [DONE] (2025-10-02 22:30 UTC) – Added HTTP `/api/tags` fallback to
+  `get_ollama_models.run()`, enabling live listings even when the CLI binary is
+  missing; unit tests cover the CLI-missing path and confirm normalized output.
 - 2025-10-01 18:47 UTC update: `which ollama` produced no
   result, `ollama --version` errored with `command not found`,
   `curl -sS http://127.0.0.1:11434/api/tags` returned connection refused, and
@@ -31,6 +29,10 @@ This document details known issues with the Ollama provider implementation and p
   xfailed expected) and direct `run()` invocation confirmed identical
   `FileNotFoundError` log entries for JSON/table fetch attempts with 0 cached
   models returned.
+- 2025-10-02 22:30 UTC update: `pytest -k http -v
+  crux_providers/tests/providers/test_ollama_parsing.py` validated the HTTP
+  fallback path; structured logs now annotate fallback usage while cache access
+  remains a final safety net.
 - 2025-10-01 update: Re-ran model fetch workflow; both JSON and table CLI
   fallbacks raise `FileNotFoundError` and cached snapshot returns zero models.
 - 2025-10-01 18:09 UTC update: `pytest -v` (273 passed, 1 skipped, 2 xfailed

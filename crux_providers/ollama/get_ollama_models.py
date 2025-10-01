@@ -26,7 +26,10 @@ import re
 from ..base.logging import get_logger, log_event, LogContext
 
 from ..base.get_models_base import save_provider_models, load_cached_models
-from ..base.timeouts import get_timeout_config
+from ..base.http import get_httpx_client
+from ..base.timeouts import get_timeout_config, operation_timeout
+from ..config import get_provider_config
+from ..config.defaults import OLLAMA_DEFAULT_HOST
 
 PROVIDER = "ollama"
 
@@ -179,6 +182,84 @@ def _fetch_via_cli() -> List[Dict[str, Any]]:
     return _parse_ollama_list_table(out)
 
 
+def _normalize_http_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a normalized mapping containing ``id``/``name`` keys.
+
+    Parameters
+    ----------
+    entry:
+        Raw mapping returned by the Ollama HTTP API. Accepts flexible key
+        shapes across versions (``name``/``model``/``id``).
+
+    Returns
+    -------
+    Dict[str, Any]
+        Copy of ``entry`` guaranteed to expose ``id`` and ``name`` fields.
+    """
+
+    normalized: Dict[str, Any] = dict(entry)
+    candidate = (
+        entry.get("name")
+        or entry.get("model")
+        or entry.get("id")
+        or entry.get("tag")
+        or entry.get("digest")
+    )
+    text = str(candidate) if candidate is not None else json.dumps(entry, ensure_ascii=False)
+    normalized["id"] = text
+    normalized["name"] = text
+    return normalized
+
+
+def _fetch_via_http_api() -> List[Dict[str, Any]]:
+    """Fetch Ollama models via the local HTTP API fallback.
+
+    Returns a list of normalized model entries when the daemon responds. The
+    function reuses the shared pooled HTTP client, applies the standardized
+    timeout configuration, and raises any HTTP or parsing errors to allow the
+    caller to record structured fallback logs.
+    """
+
+    cfg = get_timeout_config()
+    host = get_provider_config(PROVIDER).get("host") or OLLAMA_DEFAULT_HOST
+    client = get_httpx_client(host, purpose="ollama.models")
+    with operation_timeout(cfg.start_timeout_seconds):
+        response = client.get("/api/tags")
+    response.raise_for_status()
+    payload = response.json()
+    raw_items = payload.get("models", payload) if isinstance(payload, dict) else payload
+    items: List[Dict[str, Any]] = []
+    for raw in raw_items or []:
+        if isinstance(raw, dict):
+            items.append(_normalize_http_entry(raw))
+        else:
+            text = str(raw)
+            items.append({"id": text, "name": text})
+    return items
+
+
+def _log_fetch_event(
+    event: str,
+    *,
+    stage: str,
+    fallback_used: bool,
+    failure_class: str | None,
+    **extra: Any,
+) -> None:
+    """Emit a structured log entry for model refresh operations."""
+
+    log_event(
+        _logger,
+        event,
+        LogContext(provider=PROVIDER, model=None),
+        operation="models.refresh",
+        stage=stage,
+        fallback_used=fallback_used,
+        failure_class=failure_class or "None",
+        **extra,
+    )
+
+
 def _split_table_columns(line: str) -> List[str]:
     """Split a table line by two-or-more spaces preserving token groups.
 
@@ -282,28 +363,93 @@ def _fetch_ollama_models_json(eff_timeout: int) -> List[Dict[str, Any]]:
 
 
 def run() -> List[Dict[str, Any]]:
-    """
-    Preferred entrypoint. Attempts local refresh; falls back to cached snapshot.
+    """Return the freshest available Ollama model listing.
 
-    Returns a list of dicts (models) for convenience; ModelRegistryRepository can
-    also parse and persist this return value.
+    The function prefers the local CLI, falls back to the HTTP API when the CLI
+    is missing/unavailable, and ultimately returns the cached snapshot if both
+    live strategies fail. Successful live refreshes persist the normalized
+    snapshot via :func:`save_provider_models` for reuse.
     """
+
     try:
-        if items := _fetch_via_cli():  # noqa: SIM901 explicit for readability
+        cli_items = _fetch_via_cli()
+    except Exception as exc:  # pragma: no cover - defensive logging path
+        _log_fetch_event(
+            "ollama.models.cli_failed",
+            stage="start",
+            fallback_used=True,
+            failure_class=exc.__class__.__name__,
+            error=str(exc),
+        )
+        cli_items = []
+    else:
+        if cli_items:
             save_provider_models(
                 PROVIDER,
-                items,
+                cli_items,
                 fetched_via="ollama_list",
                 metadata={"source": "ollama_cli"},
             )
-            return items
-    except Exception as e:  # pragma: no cover - defensive
-        logging.getLogger(__name__).error(
-            "ollama CLI model fetch failed; using cached snapshot: %s", e, exc_info=True
+            _log_fetch_event(
+                "ollama.models.cli_success",
+                stage="finalize",
+                fallback_used=False,
+                failure_class="None",
+                fetched=len(cli_items),
+            )
+            return cli_items
+        _log_fetch_event(
+            "ollama.models.cli_empty",
+            stage="start",
+            fallback_used=True,
+            failure_class="None",
+            fetched=0,
+        )
+
+    try:
+        http_items = _fetch_via_http_api()
+    except Exception as exc:  # pragma: no cover - defensive logging path
+        _log_fetch_event(
+            "ollama.models.http_failed",
+            stage="start",
+            fallback_used=True,
+            failure_class=exc.__class__.__name__,
+            error=str(exc),
+        )
+    else:
+        if http_items:
+            save_provider_models(
+                PROVIDER,
+                http_items,
+                fetched_via="ollama_http",
+                metadata={"source": "ollama_http"},
+            )
+            _log_fetch_event(
+                "ollama.models.http_success",
+                stage="finalize",
+                fallback_used=True,
+                failure_class="None",
+                fetched=len(http_items),
+            )
+            return http_items
+        _log_fetch_event(
+            "ollama.models.http_empty",
+            stage="finalize",
+            fallback_used=True,
+            failure_class="None",
+            fetched=0,
         )
 
     snap = load_cached_models(PROVIDER)
-    return [m.to_dict() for m in snap.models]
+    cached = [m.to_dict() for m in snap.models]
+    _log_fetch_event(
+        "ollama.models.cache_used",
+        stage="finalize",
+        fallback_used=True,
+        failure_class="None",
+        fetched=len(cached),
+    )
+    return cached
 
 
 # Aliases for repository compatibility

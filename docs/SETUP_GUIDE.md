@@ -14,7 +14,7 @@ Crux Providers is a provider-agnostic LLM abstraction layer built with Hybrid Cl
 
 - **Purpose**: Normalize interactions with multiple LLM providers (OpenAI, Anthropic, Gemini, Ollama, etc.) behind a single, typed interface
 - **Architecture**: Modular monolith following Clean Architecture with strict layering
-- **Key Features**: 
+- **Key Features**:
   - Provider-agnostic DTOs and interfaces
   - Central factory for adapter creation
   - Model registry with SQLite persistence
@@ -26,13 +26,15 @@ Crux Providers is a provider-agnostic LLM abstraction layer built with Hybrid Cl
 ## Prerequisites
 
 ### Required
+
 - Python 3.9 or higher
 - pip (Python package manager)
 - Git (for cloning the repository)
 - 1GB+ free disk space
 
 ### Optional (Provider-Specific)
-- **Ollama**: Local installation from https://ollama.com (for testing Ollama provider)
+
+- **Ollama**: Local installation from <https://ollama.com> (for testing Ollama provider)
 - **API Keys**: For testing cloud providers (OpenAI, Anthropic, Gemini, etc.)
 
 ---
@@ -80,6 +82,7 @@ pip install pydantic httpx pytest pytest-cov
 ```
 
 **What gets installed:**
+
 - Core provider adapters
 - HTTP client (httpx)
 - Data validation (pydantic)
@@ -168,6 +171,7 @@ crux/
 ### Key Concepts
 
 #### 1. **Provider Factory Pattern**
+
 The `ProviderFactory` is your entry point for creating provider instances:
 
 ```python
@@ -208,6 +212,7 @@ provider = ProviderFactory.create('ollama', model='llama3.2')
 **Key Rule**: Dependencies flow inward only. Outer layers depend on inner layers via interfaces.
 
 #### 3. **Model Registry**
+
 Each provider can fetch and cache its available models:
 
 ```python
@@ -219,6 +224,7 @@ print(f"Found {len(models)} models")
 ```
 
 #### 4. **Configuration Centralization**
+
 All configuration is centralized in `crux_providers/config/`:
 
 - `defaults.py`: Default values (host URLs, model names, timeouts)
@@ -289,7 +295,7 @@ Ollama is a local LLM runtime that doesn't require API keys. Here's how to set i
 
 ### Step 1: Install Ollama
 
-Visit https://ollama.com/download and follow instructions for your OS:
+Visit <https://ollama.com/download> and follow instructions for your OS:
 
 ```bash
 # Linux
@@ -343,11 +349,13 @@ print(f'Provider ready: {provider.provider_name}')
 ### Issue 1: Import Errors
 
 **Symptom:**
+
 ```
 ModuleNotFoundError: No module named 'pydantic'
 ```
 
 **Solution:**
+
 ```bash
 # Make sure virtual environment is activated
 source .venv/bin/activate  # Linux/Mac
@@ -360,12 +368,14 @@ pip install pydantic httpx pytest
 ### Issue 2: Ollama Not Found
 
 **Symptom:**
+
 ```
 FileNotFoundError: 'ollama' executable not found on PATH
 ```
 
 **Solution:**
-1. Install ollama from https://ollama.com
+
+1. Install ollama from <https://ollama.com>
 2. Verify installation: `which ollama`
 3. Add to PATH if needed
 4. Start ollama service: `ollama serve`
@@ -373,17 +383,22 @@ FileNotFoundError: 'ollama' executable not found on PATH
 ### Issue 3: API Key Issues
 
 **Symptom:**
+
 ```
 WARNING: API key not found, using cached models
 ```
 
 **Solution:**
+
 1. Create `.env` file from `.env.example`
 2. Add your API keys (without quotes if using direnv):
+
    ```bash
    OPENAI_API_KEY=sk-...
    ```
+
 3. Or export in terminal:
+
    ```bash
    export OPENAI_API_KEY=sk-...
    ```
@@ -391,11 +406,13 @@ WARNING: API key not found, using cached models
 ### Issue 4: SQLite Database Errors
 
 **Symptom:**
+
 ```
 sqlite3.OperationalError: database is locked
 ```
 
 **Solution:**
+
 - The system uses WAL mode and handles this automatically
 - If persistent, check no other process is using the DB
 - Delete `shell_prefs.db` to start fresh (loses cached data)
@@ -442,6 +459,7 @@ python -m pytest crux_providers/tests/streaming/ -v
 ### Architecture Guidelines
 
 **Critical Rules:**
+
 - No source file > 500 lines
 - Dependencies flow inward only
 - Use interfaces for cross-layer communication

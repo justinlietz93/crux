@@ -17,6 +17,10 @@ This document details known issues with the Ollama provider implementation and p
 - Status: [DONE] (2025-10-02 22:30 UTC) – Added HTTP `/api/tags` fallback to
   `get_ollama_models.run()`, enabling live listings even when the CLI binary is
   missing; unit tests cover the CLI-missing path and confirm normalized output.
+- 2025-10-04 14:35 UTC update: Hardened CLI JSON fallback logging to emit a
+  single `ollama.models.cli_json_failed` event with the required context keys
+  and wrapped both CLI strategies in `operation_timeout` to align with the
+  timeout policy before attempting HTTP fallback.
 - 2025-10-01 18:47 UTC update: `which ollama` produced no
   result, `ollama --version` errored with `command not found`,
   `curl -sS http://127.0.0.1:11434/api/tags` returned connection refused, and

@@ -48,11 +48,11 @@ This checklist provides a thorough, structured approach to beta testing the Crux
   matching configuration baselines while the CLI remains unavailable.
 - [DONE] **Section 4 – Provider Testing**: Exercised provider smoke and service
   validation via targeted pytest suites; all tests passed without regression.
-- [DONE] **Section 5 – Ollama-Specific Testing**: Implemented a guarded HTTP
-  `/api/tags` fallback inside `get_ollama_models.run()`, verified via targeted
-  pytest (`pytest crux_providers/tests/providers/test_ollama_parsing.py -k
-  http -v`) that the provider now emits live listings even when the CLI is
-  absent, with structured logs recording the fallback decision.
+- [DONE] **Section 5 – Ollama-Specific Testing**: 2025-10-04 14:35 UTC —
+  Re-instrumented CLI JSON fallback logging to satisfy structured logging
+  requirements, enforced operation-level timeouts, and revalidated the HTTP
+  `/api/tags` fallback via `pytest crux_providers/tests/providers/test_ollama_parsing.py
+  -k http -v` to confirm live listings persist without the CLI binary.
 - [DONE] **Section 6 – Architecture Compliance**: `pytest
   tests/test_architecture_rules.py -v` and `pytest
   crux_providers/tests/test_policies_filesize.py -v` both passed, confirming
@@ -831,6 +831,9 @@ Use this template to document test results:
   coverage.
 - Provider Client: [PASS] Registry persistence now captures HTTP-sourced
   listings without relying on CLI availability.
+- Structured Logging: [PASS] JSON fallback emits
+  `ollama.models.cli_json_failed` once per run with the required context keys,
+  satisfying the logging policy before HTTP fallback execution.
 - HTTP API: [PASS] `/api/tags` flow exercised through pooled `httpx` client,
   respecting timeout policy.
 - Issues: CLI binary remains absent in this container snapshot; however,

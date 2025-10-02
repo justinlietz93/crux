@@ -1,26 +1,35 @@
-"""
-Ollama: get models
+"""Crux Ollama model discovery utilities.
 
-Behavior
-- Attempts to fetch locally installed models via the 'ollama list' CLI.
-- Persists the normalized snapshot to SQLite via ``save_provider_models``
-    (DB-first; no JSON cache file is written).
-- If the CLI is unavailable or fails, falls back to the cached snapshot from
-    SQLite (no network).
+Purpose
+    Provide a deterministic entrypoint for refreshing the Ollama provider's
+    locally available model metadata that remains compatible with the
+    model-registry repository helpers.
 
-Entry points recognized by the ModelRegistryRepository:
-- run()  (preferred)
-- get_models()/fetch_models()/update_models()/refresh_models() also provided for convenience
+External Dependencies
+    * Local ``ollama`` CLI binary accessed through ``subprocess``.
+    * Local Ollama HTTP API served at ``/api/tags`` via ``get_httpx_client``.
+
+Fallback Semantics
+    1. Invoke ``ollama list --json`` and normalize the response.
+    2. On JSON failure, retry with table parsing of ``ollama list`` output.
+    3. If the CLI is unavailable or produces no entries, query the HTTP API.
+    4. Persist successful live refreshes and otherwise return the cached
+       snapshot from SQLite storage.
+
+Timeout Strategy
+    All blocking operations reuse ``get_timeout_config().start_timeout_seconds``
+    and enforce it via ``operation_timeout`` as well as the subprocess timeout
+    argument to ensure consistent cancellation semantics across fallbacks.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 import subprocess  # nosec B404 - required for invoking trusted local 'ollama' CLI (fixed arg list)
 import shutil
 import os
 import stat
+import math
 from typing import Any, Dict, List
 import re
 from ..base.logging import get_logger, log_event, LogContext
@@ -163,23 +172,46 @@ def _invoke_ollama_list(json_output: bool, timeout: int) -> str:
 
 
 def _fetch_via_cli() -> List[Dict[str, Any]]:
+    """Return model listings discovered via the trusted local CLI.
+
+    The helper retrieves the effective timeout configuration once, enforces it
+    with :func:`operation_timeout`, and performs a JSON-first discovery
+    followed by a table-parse fallback. Structured logging captures any JSON
+    failure so that the caller can make an informed decision before querying
+    secondary channels.
+
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Normalized model metadata containing at least ``id`` and ``name``.
+
+    Raises
+    ------
+    Exception
+        Propagates subprocess or parsing errors that occur during the table
+        fallback so the caller can record the failure and continue to other
+        strategies.
     """
-    Fetch model listings using 'ollama list' command.
-    Tries JSON output first; falls back to parsing table output.
-    Returns a list of dicts with at least {'id', 'name'} keys.
-    """
-    # Try JSON output first (supported on modern ollama)
+
     cfg = get_timeout_config()
-    eff_timeout = int(cfg.start_timeout_seconds)
+    timeout_seconds = float(cfg.start_timeout_seconds)
+    subprocess_timeout = max(1, int(math.ceil(timeout_seconds)))
+
     try:
-        return _fetch_ollama_models_json(eff_timeout)
-    except Exception as e:  # log & fallback to table parsing
-        logging.getLogger(__name__).warning(
-            "ollama list --json failed; falling back to table parse: %s", e, exc_info=True
+        with operation_timeout(timeout_seconds):
+            return _fetch_ollama_models_json(subprocess_timeout)
+    except Exception as exc:
+        _log_fetch_event(
+            "ollama.models.cli_json_failed",
+            stage="mid_stream",
+            fallback_used=True,
+            failure_class=exc.__class__.__name__,
+            error=str(exc),
         )
-    # Fallback to parsing table output using a resilient parser
-    out = _invoke_ollama_list(json_output=False, timeout=eff_timeout)
-    return _parse_ollama_list_table(out)
+
+    with operation_timeout(timeout_seconds):
+        output = _invoke_ollama_list(json_output=False, timeout=subprocess_timeout)
+    return _parse_ollama_list_table(output)
 
 
 def _normalize_http_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -337,7 +369,7 @@ def _parse_ollama_list_table(output: str) -> List[Dict[str, Any]]:
 
 
 def _fetch_ollama_models_json(eff_timeout: int) -> List[Dict[str, Any]]:
-    """Return models parsed from `ollama list --json` output.
+    """Return models parsed from ``ollama list --json`` output.
 
     Parameters
     ----------
@@ -347,9 +379,18 @@ def _fetch_ollama_models_json(eff_timeout: int) -> List[Dict[str, Any]]:
     Returns
     -------
     List[Dict[str, Any]]
-        Normalized model entries each containing at least 'id' and 'name'.
+        Normalized model entries each containing at least ``id`` and ``name``.
+
+    Raises
+    ------
+    json.JSONDecodeError
+        If the CLI returns malformed JSON that cannot be parsed.
+    subprocess.SubprocessError
+        If the CLI invocation fails or times out before producing output.
     """
-    out = _invoke_ollama_list(json_output=True, timeout=eff_timeout)
+
+    with operation_timeout(eff_timeout):
+        out = _invoke_ollama_list(json_output=True, timeout=eff_timeout)
     data = json.loads(out)
     raw = data.get("models", data) if isinstance(data, dict) else data
     items: List[Dict[str, Any]] = []
@@ -454,37 +495,65 @@ def run() -> List[Dict[str, Any]]:
 
 # Aliases for repository compatibility
 def get_models() -> List[Dict[str, Any]]:
-    """
-    Gets the list of available Ollama models.
+    """Return the available Ollama models.
 
-    This function invokes the preferred entrypoint to retrieve and return the current model list.
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Normalized model records supplied by :func:`run`.
+
+    Notes
+    -----
+    Delegates to :func:`run` to ensure consistent fallback handling and
+    persistence side effects.
     """
     return run()
 
 
 def fetch_models() -> List[Dict[str, Any]]:
-    """
-    Fetches the list of available Ollama models.
+    """Fetch and return the available Ollama models.
 
-    This function invokes the preferred entrypoint to retrieve and return the current model list.
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Normalized model records supplied by :func:`run`.
+
+    Notes
+    -----
+    Exists for compatibility with legacy repository interfaces that expect a
+    ``fetch_models`` symbol.
     """
     return run()
 
 
 def update_models() -> List[Dict[str, Any]]:
-    """
-    Updates the list of available Ollama models.
+    """Refresh the Ollama model snapshot and return the entries.
 
-    This function invokes the preferred entrypoint to refresh and return the current model list.
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Normalized model records supplied by :func:`run`.
+
+    Notes
+    -----
+    Provided to accommodate historical call sites that invoke
+    ``update_models`` explicitly.
     """
     return run()
 
 
 def refresh_models() -> List[Dict[str, Any]]:
-    """
-    Refreshes the list of available Ollama models.
+    """Refresh and return the Ollama model metadata.
 
-    This function calls the preferred entrypoint to update and return the current model list.
+    Returns
+    -------
+    List[Dict[str, Any]]
+        Normalized model records supplied by :func:`run`.
+
+    Notes
+    -----
+    Maintains compatibility with provider registries that reference a
+    ``refresh_models`` helper.
     """
     return run()
 

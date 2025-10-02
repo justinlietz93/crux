@@ -17,6 +17,9 @@ This document details known issues with the Ollama provider implementation and p
 - Status: [DONE] (2025-10-02 22:30 UTC) – Added HTTP `/api/tags` fallback to
   `get_ollama_models.run()`, enabling live listings even when the CLI binary is
   missing; unit tests cover the CLI-missing path and confirm normalized output.
+- 2025-10-05 09:55 UTC update: Extracted CLI validation and table parsing
+  helpers into dedicated modules so `get_ollama_models.py` stays under the 500
+  LOC ceiling without altering fallback behavior or structured logging.
 - 2025-10-04 14:35 UTC update: Hardened CLI JSON fallback logging to emit a
   single `ollama.models.cli_json_failed` event with the required context keys
   and wrapped both CLI strategies in `operation_timeout` to align with the

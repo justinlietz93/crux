@@ -56,7 +56,11 @@ This checklist provides a thorough, structured approach to beta testing the Crux
 - [DONE] **Section 6 – Architecture Compliance**: `pytest
   tests/test_architecture_rules.py -v` and `pytest
   crux_providers/tests/test_policies_filesize.py -v` both passed, confirming
-  dependency boundaries and file size budgets.
+  dependency boundaries and file size budgets. 2025-10-05 09:55 UTC — Split the
+  Ollama model discovery helpers into `_cli.py` and `_table_parser.py` to bring
+  `crux_providers/ollama/get_ollama_models.py` back under the 500 LOC policy and
+  re-ran `pytest crux_providers/tests/test_policies_filesize.py -v` to confirm
+  compliance.
 - [DONE] **Section 7 – Integration Testing**: `pytest
   crux_providers/tests/test_service_smoke.py -v` and `pytest
   crux_providers/tests/test_providers_smoke.py -v` passed, validating service

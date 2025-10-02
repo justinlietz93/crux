@@ -1,6 +1,6 @@
 # CLI Issues TODO Checklist
 
-This document tracks known issues in the Crux Providers CLI interactive shell (`python -m crux_providers.service.cli shell`). Issues are prioritized by impact on usability. Status: [ ] Open, [-] In Progress, [x] Resolved.
+This document tracks known issues in the Crux Providers CLI interactive shell (`python -m crux_providers.service.cli shell`). Issues are prioritized by impact on usability. Mark items as [DONE], [STARTED], [RETRYING], [DEBUGGGING], [NOT STARTED], as you go and document your work under each item as you work. You should not remain stagnant on an issue for too long, if you get stuck on an item and it's marked [RETRYING] or [DEBUGGING], put an x# next to it, where # is the number of times you've attempted resolving it, for example [DEBUGGING x2] if you hit x3 then move on unless it's blocking anything else or if it would introduce significant technical debt if not addressed immediately. If it is a blocker like that, state this clearly in your response including "BLOCKER PREVENTING FURTHER DEVELOPMENT"
 
 ## Critical Priority (Development Blockers)
 

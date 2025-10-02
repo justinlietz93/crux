@@ -1,4 +1,5 @@
-"""CLI utility helpers for the developer terminal.
+# -*- coding: utf-8 -*-
+"""Utility helpers shared by the CLI developer shell.
 
 This module groups small, reusable helpers to keep the interactive shell
 implementation focused and under the 500 LOC policy limit.
@@ -7,16 +8,19 @@ Functions
 ---------
 - ``parse_verbosity(value)``: Map user strings and synonyms to a canonical
   logging level name.
-- ``suppress_console_logs()``: Context manager to temporarily silence console
-  StreamHandlers while preserving file handlers, avoiding interleaved JSON logs
+- ``suppress_console_logs()``: Context manager to temporarily detach console
+  handlers while preserving file handlers, avoiding interleaved JSON logs
   during streaming output.
+- ``format_metadata(meta, mode)``: Render provider metadata in JSON or
+  tabular form for terminal display or file logging.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
-from typing import Optional, Iterator
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 
 def parse_verbosity(value: str) -> Optional[str]:
@@ -24,8 +28,8 @@ def parse_verbosity(value: str) -> Optional[str]:
 
     Accepted values (case-insensitive):
     - Canonical: DEBUG, INFO, WARNING, ERROR, CRITICAL
-    - Synonyms: verbose→DEBUG; low→INFO; med/medium/warn→WARNING;
-      high/error/err/quiet→ERROR; critical/crit/silent→CRITICAL
+    - Synonyms: verbose->DEBUG; low->INFO; med/medium/warn->WARNING;
+      high/error/err/quiet->ERROR; critical/crit/silent->CRITICAL
 
     Parameters
     ----------
@@ -63,47 +67,116 @@ def parse_verbosity(value: str) -> Optional[str]:
     return None
 
 
+def _normalize_metadata_input(meta: Any) -> Dict[str, Any]:
+    """Coerce metadata objects or dictionaries into a plain mapping."""
+    if meta is None:
+        return {}
+    if hasattr(meta, "to_dict"):
+        try:
+            candidate = meta.to_dict()  # type: ignore[call-arg]
+        except Exception:
+            candidate = None
+        if isinstance(candidate, dict):
+            return candidate
+    if isinstance(meta, dict):
+        return dict(meta)
+    return {}
+
+
+def _stringify_metadata_value(value: Any) -> str:
+    """Return a human-friendly string representation for metadata values."""
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
+
+def _flatten_metadata_rows(data: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Flatten metadata dictionary entries into displayable key/value rows."""
+    rows: List[Tuple[str, str]] = []
+    for key, value in data.items():
+        if key == "extra" and isinstance(value, dict):
+            for extra_key, extra_val in value.items():
+                rows.append((f"extra.{extra_key}", _stringify_metadata_value(extra_val)))
+            continue
+        rows.append((key, _stringify_metadata_value(value)))
+    return rows
+
+
+def format_metadata(meta: Any, *, mode: str = "json") -> str:
+    """Format provider metadata for terminal or file output.
+
+    Parameters
+    ----------
+    meta: Any
+        Metadata object (``ProviderMetadata`` or ``dict``) to render.
+    mode: str, default "json"
+        Display mode: ``"json"`` (pretty-printed JSON), ``"table"``
+        (two-column table), or ``"off"`` (return empty string).
+
+    Returns
+    -------
+    str
+        Rendered metadata string. Empty string indicates nothing should be
+        displayed.
+
+    Notes
+    -----
+    - Non-dictionary inputs are coerced via ``to_dict`` when available.
+    - Nested ``extra`` values are flattened into dotted keys for table mode.
+    """
+    normalized = _normalize_metadata_input(meta)
+    if not normalized:
+        return ""
+    effective_mode = (mode or "json").strip().lower()
+    if effective_mode == "off":
+        return ""
+    if effective_mode == "table":
+        rows = _flatten_metadata_rows(normalized)
+        if not rows:
+            return ""
+        width = max(len(key) for key, _ in rows)
+        return "\n".join(f"{key.ljust(width)} : {value}" for key, value in rows)
+    # Default to JSON output for unrecognized modes for resilience
+    return json.dumps(normalized, ensure_ascii=False, indent=2)
+
+
 @contextlib.contextmanager
 def suppress_console_logs() -> Iterator[None]:
-    """Temporarily raise console ``StreamHandler`` levels to silence log spam.
+    """Temporarily detach console handlers to silence log spam.
 
     Summary
     -------
     Some providers emit frequent INFO-level structured logs during streaming
-    (e.g., decode events). This context manager temporarily raises the level of
-    any console ``StreamHandler`` attached to the shared ``providers`` logger
-    and its children (e.g., ``providers.openrouter``) so those logs do not
-    interleave with streamed token output in the interactive shell. File logging
-    remains unaffected.
+    (e.g., decode events). This context manager temporarily removes console
+    handlers attached to the shared ``providers`` logger and its children so
+    those logs do not interleave with streamed token output in the interactive
+    shell. File logging remains unaffected.
 
     Behavior
     --------
-    - Only console handlers (stderr) are affected.
+    - Only console handlers (stderr/stdout) are affected.
     - Managed file handlers (tagged with ``_providers_file_handler``) are left
       untouched.
-    - Previous levels are restored on exit.
+    - Original handlers and propagation flags are restored on exit.
     """
-    handlers_prev: list[tuple[logging.Handler, int]] = []
-    propagate_prev: list[tuple[logging.Logger, bool]] = []
+    propagate_prev: List[Tuple[logging.Logger, bool]] = []
+    detached: List[Tuple[logging.Logger, logging.Handler, int]] = []
     try:
-        # Consider the base logger and common child names; walk existing
-        # loggers to catch dynamically created per-provider loggers.
-        target_loggers: list[logging.Logger] = []
+        target_loggers: List[logging.Logger] = []
         base = logging.getLogger("providers")
         target_loggers.append(base)
-        # Include known child namespaces if present
         for name, logger in list(getattr(logging.Logger.manager, "loggerDict", {}).items()):  # type: ignore[attr-defined]
-            # Skip placeholders and unrelated loggers; avoid try/except/continue pattern
             if not isinstance(name, str):
                 continue
-            # Some entries may be PlaceHolder; skip safely
-            if getattr(logging, "PlaceHolder", None) is not None and isinstance(logger, logging.PlaceHolder):  # type: ignore[attr-defined]
+            placeholder = getattr(logging, "PlaceHolder", None)
+            if placeholder is not None and isinstance(logger, placeholder):
                 continue
             if name.startswith("providers"):
                 target_loggers.append(logging.getLogger(name))
-        # Deduplicate
         seen = set()
-        unique_loggers = []
+        unique_loggers: List[logging.Logger] = []
         for lg in target_loggers:
             if lg.name in seen:
                 continue
@@ -111,24 +184,27 @@ def suppress_console_logs() -> Iterator[None]:
             unique_loggers.append(lg)
 
         for lg in unique_loggers:
-            # Disable propagation so records don't reach root handlers
             propagate_prev.append((lg, lg.propagate))
             lg.propagate = False
-            for h in list(lg.handlers):
-                if getattr(h, "_providers_file_handler", False):
+            for handler in list(lg.handlers):
+                if getattr(handler, "_providers_file_handler", False):
                     continue
-                if isinstance(h, logging.StreamHandler):
-                    prev_level = h.level if hasattr(h, "level") else lg.level
-                    handlers_prev.append((h, prev_level))
-                    h.setLevel(logging.CRITICAL + 1)
+                if isinstance(handler, logging.StreamHandler) or hasattr(handler, "stream"):
+                    try:
+                        handler.flush()
+                    except Exception:
+                        pass
+                    detached.append((lg, handler, handler.level if hasattr(handler, "level") else lg.level))
+                    lg.removeHandler(handler)
         yield
     finally:
-        for lg, prev_prop in propagate_prev:
+        for lg, previous in propagate_prev:
             with contextlib.suppress(Exception):
-                lg.propagate = prev_prop
-        for h, prev in handlers_prev:
+                lg.propagate = previous
+        for lg, handler, level in detached:
             with contextlib.suppress(Exception):
-                h.setLevel(prev)
+                handler.setLevel(level)
+                lg.addHandler(handler)
 
 
-__all__ = ["parse_verbosity", "suppress_console_logs"]
+__all__ = ["parse_verbosity", "suppress_console_logs", "format_metadata"]

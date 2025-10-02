@@ -112,6 +112,8 @@ XAI_API_KEY="your-xai-key-here"
 
 # Ollama Configuration (optional, defaults shown)
 OLLAMA_HOST="http://127.0.0.1:11434"  # Local ollama server
+# Enable deterministic mock adapters instead of live providers (optional)
+CRUX_USE_MOCKS="0"  # Set to 1/true to route the factory and CLI through fixtures
 ```
 
 **Security Note**: Never commit real API keys to the repository!
@@ -125,7 +127,15 @@ python -c "from crux_providers.base import ProviderFactory; print('✓ Core impo
 # List supported providers
 python -c "from crux_providers.base.factory import ProviderFactory; print('Supported providers:', ProviderFactory.supported())"
 
-# Expected output: ('openai', 'anthropic', 'gemini', 'deepseek', 'openrouter', 'ollama', 'xai')
+# Expected output: ('openai', 'anthropic', 'gemini', 'deepseek', 'openrouter', 'ollama', 'xai', 'mock')
+
+# Quick smoke-test for mock providers (optional, no network calls)
+CRUX_USE_MOCKS=1 python -c "from crux_providers.base.factory import ProviderFactory;\
+    adapter = ProviderFactory.create('openai');\
+    from crux_providers.base.models import ChatRequest, Message;\
+    resp = adapter.chat(ChatRequest(model=None, messages=[Message(role='user', content='hello')]));\
+    print(resp.text)"
+# Expected output: "Hello from the mock provider!"
 ```
 
 ---

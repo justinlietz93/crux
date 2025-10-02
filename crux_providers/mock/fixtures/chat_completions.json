@@ -1,0 +1,59 @@
+{
+  "default_model": "mock-gpt",
+  "providers": {
+    "*": {
+      "model": "mock-gpt",
+      "responses": {
+        "*": {
+          "text": "This is a mock completion generated from fixtures.",
+          "meta": {
+            "extra": {
+              "source": "fixture",
+              "variant": "default"
+            }
+          },
+          "stream": [
+            "This ",
+            "is ",
+            "a ",
+            "mock ",
+            "completion",
+            " generated",
+            " from",
+            " fixtures."
+          ]
+        },
+        "hello": {
+          "text": "Hello from the mock provider!",
+          "meta": {
+            "extra": {
+              "source": "fixture",
+              "variant": "greeting"
+            }
+          },
+          "stream": [
+            "Hello ",
+            "from ",
+            "the ",
+            "mock ",
+            "provider!"
+          ]
+        }
+      }
+    },
+    "openai": {
+      "model": "mock-openai",
+      "responses": {
+        "structured": {
+          "text": "Structured output is not available in mock mode.",
+          "meta": {
+            "extra": {
+              "source": "fixture",
+              "variant": "structured"
+            }
+          }
+        }
+      }
+    }
+  }
+}

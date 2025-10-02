@@ -41,6 +41,7 @@ from ...base import logging as base_logging
 CONFIG_DIR_NAME = "crux_providers"
 CONFIG_FILE_NAME = "cli.json"
 DEFAULT_LOG_FILE = "crux_dev.log"
+DEFAULT_META_LOG_FILE = "crux_dev_metadata.log"
 HISTORY_FILE_NAME = "cli_history"
 
 
@@ -89,11 +90,20 @@ class CLISettings:
     log_file_path: str
         Absolute or user-relative path to the desired log file. The default
         resolves under the application's config directory.
+    meta_display: str
+        Preferred metadata presentation mode (``json``, ``table``, or ``off``).
+    meta_log_to_file: bool
+        When ``True``, append rendered metadata to a companion log file.
+    meta_log_file_path: str
+        Destination path for metadata log output when enabled.
     """
 
     verbosity: str = "INFO"
     log_to_file: bool = False
     log_file_path: str = str(_xdg_state_dir() / DEFAULT_LOG_FILE)
+    meta_display: str = "json"
+    meta_log_to_file: bool = False
+    meta_log_file_path: str = str(_xdg_state_dir() / DEFAULT_META_LOG_FILE)
     # UI conveniences
     ui_colors: bool = True
     ui_readline: bool = True
@@ -124,11 +134,18 @@ def load_settings() -> CLISettings:
             canon_v = raw_v.strip().upper()
             if canon_v not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
                 canon_v = "INFO"
+            meta_mode_raw = str(data.get("meta_display", "json")).strip().lower()
+            if meta_mode_raw not in {"json", "table", "off"}:
+                meta_mode_raw = "json"
+            meta_log_path = str(data.get("meta_log_file_path", str(_xdg_state_dir() / DEFAULT_META_LOG_FILE)))
             return CLISettings(
                 verbosity=canon_v,
                 log_to_file=bool(data.get("log_to_file", False)),
                 # Default log file under state dir, not config dir
                 log_file_path=str(data.get("log_file_path", str(_xdg_state_dir() / DEFAULT_LOG_FILE))),
+                meta_display=meta_mode_raw,
+                meta_log_to_file=bool(data.get("meta_log_to_file", False)),
+                meta_log_file_path=meta_log_path,
                 ui_colors=bool(data.get("ui_colors", True)),
                 ui_readline=bool(data.get("ui_readline", True)),
                 ui_completions=bool(data.get("ui_completions", True)),

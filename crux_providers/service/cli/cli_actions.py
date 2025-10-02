@@ -42,6 +42,7 @@ from ...base.models import ChatRequest, Message
 from ...base.streaming import streaming_supported
 from ...base.timeouts import get_timeout_config, operation_timeout
 from ...config.env import get_env_var_candidates
+from ...base.factory import ProviderFactory, UnknownProviderError
 from ..helpers import set_env_for_provider
 
 
@@ -97,6 +98,7 @@ def resolve_provider_class(name: str):
         "anthropic": ("crux_providers.anthropic.client", "AnthropicProvider"),
         "gemini": ("crux_providers.gemini.client", "GeminiProvider"),
         "ollama": ("crux_providers.ollama.client", "OllamaProvider"),
+        "mock": ("crux_providers.mock.client", "MockProvider"),
     }
     item = mapping.get((name or "").lower().strip())
     if not item:
@@ -123,11 +125,10 @@ def instantiate_adapter(provider: str) -> Optional[Any]:
         Adapter instance on success; ``None`` if the provider is unknown or
         if the adapter constructor raised an exception.
     """
-    cls = resolve_provider_class(provider)
-    if cls is None:
-        return None
     try:
-        return cls()
+        return ProviderFactory.create(provider)
+    except UnknownProviderError:
+        return None
     except Exception:
         return None
 

@@ -25,6 +25,62 @@ from typing import Any, Dict, Mapping, Optional
 from .log_support import JsonFormatter, LogContext
 
 
+_BASE_LOGGER_ATTR = "_providers_logger_initialized"
+_CHILD_LOGGER_ATTR = "_providers_child_configured"
+_CONSOLE_HANDLER_ATTR = "_providers_console_handler"
+
+
+def _ensure_base_logger(json_mode: bool, level: int) -> logging.Logger:
+    """Initialize and return the shared ``providers`` logger."""
+
+    logger = logging.getLogger("providers")
+    desired_level = _parse_level(os.getenv("PROVIDERS_LOG_LEVEL"), default=level)
+    if getattr(logger, _BASE_LOGGER_ATTR, False):
+        if logger.level != desired_level:
+            logger.setLevel(desired_level)
+        for existing in list(logger.handlers):
+            if not getattr(existing, _CONSOLE_HANDLER_ATTR, False):
+                continue
+            stream_obj = getattr(existing, "stream", None)
+            if stream_obj is None or getattr(stream_obj, "closed", False):
+                logger.removeHandler(existing)
+                with contextlib.suppress(Exception):
+                    existing.close()
+                replacement = logging.StreamHandler(sys.stderr)
+                replacement.setLevel(desired_level)
+                if json_mode:
+                    replacement.setFormatter(JsonFormatter())
+                else:
+                    replacement.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+                setattr(replacement, _CONSOLE_HANDLER_ATTR, True)
+                logger.addHandler(replacement)
+                continue
+            existing.setLevel(desired_level)
+            if hasattr(existing, "setStream"):
+                with contextlib.suppress(Exception):
+                    existing.setStream(sys.stderr)
+            if json_mode and not isinstance(existing.formatter, JsonFormatter):
+                existing.setFormatter(JsonFormatter())
+            elif not json_mode and isinstance(existing.formatter, JsonFormatter):
+                existing.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+        return logger
+
+    env_level = desired_level
+    logger.setLevel(env_level)
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(env_level)
+    if json_mode:
+        handler.setFormatter(JsonFormatter())
+    else:
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    setattr(handler, _CONSOLE_HANDLER_ATTR, True)
+    logger.handlers[:] = [handler]
+    logger.propagate = False
+    setattr(logger, _BASE_LOGGER_ATTR, True)
+    logger._configured_base_logger = True  # type: ignore[attr-defined]
+    return logger
+
+
 def _parse_level(value: str | None, default: int = logging.INFO) -> int:
     """Parse a logging level string into an integer constant.
 
@@ -45,19 +101,20 @@ def _parse_level(value: str | None, default: int = logging.INFO) -> int:
 
 
 def get_logger(name: str = "providers", json_mode: bool = True, level: int = logging.INFO) -> logging.Logger:
+    base_logger = _ensure_base_logger(json_mode=json_mode, level=level)
+    if name == "providers":
+        return base_logger
+
     logger = logging.getLogger(name)
-    if getattr(logger, "_configured_base_logger", False):  # idempotent
-        return logger
-    # Honor environment override while preserving the function parameter as a default
-    env_level = _parse_level(os.getenv("PROVIDERS_LOG_LEVEL"), default=level)
-    logger.setLevel(env_level)
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setLevel(env_level)
-    if json_mode:
-        handler.setFormatter(JsonFormatter())
-    else:
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
-    logger.handlers[:] = [handler]
+    # Drop previously managed console handlers to avoid duplicate emissions.
+    for handler in list(logger.handlers):
+        if getattr(handler, _CONSOLE_HANDLER_ATTR, False):
+            logger.removeHandler(handler)
+            with contextlib.suppress(Exception):
+                handler.close()
+    logger.setLevel(logging.NOTSET)
+    logger.propagate = True
+    setattr(logger, _CHILD_LOGGER_ATTR, True)
     logger._configured_base_logger = True  # type: ignore[attr-defined]
     return logger
 

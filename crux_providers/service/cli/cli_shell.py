@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 import os
 import readline  # type: ignore[attr-defined]
@@ -44,6 +45,7 @@ from .cli_actions import (
     instantiate_adapter,
     streaming_capable,
 )
+from ...base.streaming.streaming import accumulate_events
 from ..helpers import set_env_for_provider
 from .settings import (
     CLISettings,
@@ -52,7 +54,11 @@ from .settings import (
     apply_logging,
     normalize_log_path,
 )
-from .cli_utils import parse_verbosity as _parse_verbosity, suppress_console_logs as _suppress_console_logs
+from .cli_utils import (
+    parse_verbosity as _parse_verbosity,
+    suppress_console_logs as _suppress_console_logs,
+    format_metadata as _format_metadata,
+)
 
 
 ## Verbosity parsing has been centralized in cli_utils.parse_verbosity.
@@ -93,22 +99,30 @@ def _readline(prompt: str) -> str:
         return "quit"
 
 
-def _live_stream(adapter: Any, req: ChatRequest) -> str:
-    """Stream tokens live to stdout and return the accumulated text.
+def _live_stream(adapter: Any, req: ChatRequest) -> list[Any]:
+    """Stream tokens live to stdout while capturing emitted events.
 
     During streaming, temporarily suppress console JSON logs from the
     shared ``providers`` logger so they don't interleave with token
     output. File logging remains unaffected.
+
+    Returns
+    -------
+    list[Any]
+        Collected stream events from the provider for downstream
+        aggregation (e.g., metadata rendering).
     """
-    parts: list[str] = []
+    events: list[Any] = []
+    emitted = False
     with _suppress_console_logs():
         for ev in adapter.stream_chat(req):
-            if ev.delta:
-                text = ev.delta
-                parts.append(text)
-                print(text, end="", flush=True)
+            events.append(ev)
+            delta = getattr(ev, "delta", None)
+            if delta:
+                emitted = True
+                print(delta, end="", flush=True)
     print()
-    return "".join(parts)
+    return events
 
 
 # Note: Console log suppression is implemented in `cli_utils.suppress_console_logs`.
@@ -189,7 +203,7 @@ class DevSession:
             # Base command list for completion and suggestions
             self._commands = [
                 "help", "status", "providers", "use", "model", "stream",
-                "options", "verbosity", "logfile", "colors", "readline", "complete",
+                "options", "verbosity", "logfile", "metadata", "colors", "readline", "complete",
                 "ask", "chat", "quit", "exit",
             ]
             if getattr(self.settings, "ui_readline", True):
@@ -308,6 +322,8 @@ class DevSession:
             self._opt_set_verbosity(tokens)
         elif cmd == "logfile":
             self._opt_logfile(tokens)
+        elif cmd == "metadata":
+            self._opt_metadata(tokens)
         elif cmd in {"colors", "readline", "complete"}:
             self._opt_toggle(cmd, tokens)
         else:
@@ -318,6 +334,9 @@ class DevSession:
         _print_header(self._color("options", "cyan"))
         print(f"verbosity : {self.settings.verbosity}")
         print(f"log file  : {self.settings.log_file_path if self.settings.log_to_file else 'disabled'}")
+        print(f"metadata : {self.settings.meta_display}")
+        meta_log_label = self.settings.meta_log_file_path if self.settings.meta_log_to_file else 'disabled'
+        print(f"meta log : {meta_log_label}")
         print(f"colors    : {'on' if getattr(self.settings, 'ui_colors', True) else 'off'}")
         print(f"readline  : {'on' if getattr(self.settings, 'ui_readline', True) else 'off'}")
         print(f"complete  : {'on' if getattr(self.settings, 'ui_completions', True) else 'off'}")
@@ -326,12 +345,15 @@ class DevSession:
         print("      LEVEL: DEBUG|INFO|WARNING|ERROR|CRITICAL (synonyms: verbose, low, med/medium, warn, high, err, crit, quiet, silent)")
         print("  options logfile on [<path>]")
         print("  options logfile off")
+        print("  options metadata mode <json|table|off>")
+        print("  options metadata log on|off [<path>]")
         print("  options colors on|off")
         print("  options readline on|off")
         print("  options complete on|off")
         print("\nAliases:")
         print("  verbosity <LEVEL>")
         print("  logfile on|off [<path>]")
+        print("  metadata mode|log ...")
         print("  colors on|off  |  readline on|off  |  complete on|off")
 
     def _opt_set_verbosity(self, tokens: list[str]) -> None:
@@ -378,6 +400,55 @@ class DevSession:
             return
         print("usage: options logfile on [<path>] | options logfile off")
 
+    def _opt_metadata(self, tokens: list[str]) -> None:
+        """Configure metadata display mode or logging destination."""
+
+        if len(tokens) < 2:
+            print("usage: options metadata mode <json|table|off> | options metadata log on|off [<path>]")
+            return
+        subcmd = tokens[1].lower()
+        if subcmd == "mode":
+            if len(tokens) < 3:
+                print("usage: options metadata mode <json|table|off>")
+                return
+            mode = tokens[2].lower()
+            if mode not in {"json", "table", "off"}:
+                print("error: metadata mode must be one of json|table|off")
+                return
+            self.settings.meta_display = mode
+            ok, err = save_settings(self.settings)
+            if not ok:
+                print(f"warning: failed to save settings: {err}")
+            print(f"metadata display set to {self.settings.meta_display}")
+            return
+        if subcmd == "log":
+            if len(tokens) < 3:
+                print("usage: options metadata log on|off [<path>]")
+                return
+            state = tokens[2].lower()
+            if state not in {"on", "off"}:
+                print("usage: options metadata log on|off [<path>]")
+                return
+            if state == "on":
+                self.settings.meta_log_to_file = True
+                if len(tokens) >= 4:
+                    raw_path = " ".join(tokens[3:])
+                    self.settings.meta_log_file_path = normalize_log_path(raw_path)
+                else:
+                    self.settings.meta_log_file_path = normalize_log_path(self.settings.meta_log_file_path)
+                ok, err = save_settings(self.settings)
+                if not ok:
+                    print(f"warning: failed to save settings: {err}")
+                print(f"metadata logging enabled → {self.settings.meta_log_file_path}")
+                return
+            self.settings.meta_log_to_file = False
+            ok, err = save_settings(self.settings)
+            if not ok:
+                print(f"warning: failed to save settings: {err}")
+            print("metadata logging disabled")
+            return
+        print("usage: options metadata mode <json|table|off> | options metadata log on|off [<path>]")
+
     def _opt_toggle(self, field: str, tokens: list[str]) -> None:
         """Toggle simple boolean UI flags: colors, readline, complete."""
         if len(tokens) < 2:
@@ -412,32 +483,153 @@ class DevSession:
             print("error: no adapter for provider")
             return
         req = ChatRequest(model=self._effective_model(), messages=[Message(role="user", content=prompt)])
+        metadata: Any | None = None
         try:
             if self.stream and streaming_capable(self.adapter):
+                events: list[Any]
                 if self.live:
-                    self._run_stream_live(req)
+                    events = self._run_stream_live(req)
                 else:
-                    self._run_stream_buffered(req)
+                    events = self._run_stream_buffered(req)
+                metadata = self._metadata_from_stream(events)
             else:
                 resp = self.adapter.chat(req)
                 print(resp.text or "")
+                metadata = getattr(resp, "meta", None)
         except Exception as e:
             print(self._color(f"error: {e}", "red"))
+            return
+        if metadata is not None:
+            self._display_metadata(metadata)
 
-    def _run_stream_live(self, req: ChatRequest) -> None:
-        """Stream tokens live, suppressing console logs during stream."""
-        _ = _live_stream(self.adapter, req)  # type: ignore[arg-type]
+    def _run_stream_live(self, req: ChatRequest) -> list[Any]:
+        """Stream tokens live while capturing events for metadata display.
 
-    def _run_stream_buffered(self, req: ChatRequest) -> None:
-        """Buffer streamed tokens then print once; suppress console logs while buffering."""
+        Parameters
+        ----------
+        req: ChatRequest
+            Chat request constructed from user input and session state.
+
+        Returns
+        -------
+        list[Any]
+            Stream events emitted by the provider for downstream aggregation.
+        """
+        if not self.adapter:
+            return []
+        return _live_stream(self.adapter, req)  # type: ignore[arg-type]
+
+    def _run_stream_buffered(self, req: ChatRequest) -> list[Any]:
+        """Buffer streamed tokens, emit once, and collect events.
+
+        Parameters
+        ----------
+        req: ChatRequest
+            Chat request to execute in streaming mode without live token printing.
+
+        Returns
+        -------
+        list[Any]
+            Sequence of stream events for metadata aggregation.
+        """
+        if not self.adapter:
+            return []
+        events: list[Any] = []
         parts: list[str] = []
         with _suppress_console_logs():
-            # type: ignore[arg-type]
-            parts.extend(ev.delta for ev in self.adapter.stream_chat(req) if ev.delta)  # noqa: E501
+            for ev in self.adapter.stream_chat(req):  # type: ignore[arg-type]
+                events.append(ev)
+                delta = getattr(ev, "delta", None)
+                if delta:
+                    parts.append(delta)
         print("".join(parts))
+        return events
 
-    def chat(self) -> None:
-        """Enter multi-line prompt mode; finish with an empty line."""
+    def _metadata_from_stream(self, events: list[Any]) -> Optional[Any]:
+        """Aggregate streaming events into provider metadata for display.
+
+        Parameters
+        ----------
+        events: list[Any]
+            Events yielded by ``stream_chat`` for the current invocation.
+
+        Returns
+        -------
+        Optional[Any]
+            Provider metadata object when accumulation succeeds; otherwise ``None``.
+        """
+        if not events:
+            return None
+        try:
+            response = accumulate_events(events)  # type: ignore[arg-type]
+        except Exception:
+            return None
+        return getattr(response, "meta", None)
+
+    def _display_metadata(self, meta: Any) -> None:
+        """Render metadata according to settings and optionally log to disk.
+
+        Parameters
+        ----------
+        meta: Any
+            Provider metadata payload (``ProviderMetadata`` or ``dict``).
+
+        Side Effects
+        ------------
+        Prints formatted metadata to stdout and may append to the configured
+        metadata log file when enabled.
+        """
+        output = _format_metadata(meta, mode=getattr(self.settings, "meta_display", "json"))
+        if not output:
+            return
+        _print_header(self._color("metadata", "magenta"))
+        print(output)
+        if getattr(self.settings, "meta_log_to_file", False):
+            self._append_metadata_log(output)
+
+    def _append_metadata_log(self, payload: str) -> None:
+        """Append rendered metadata output to the configured log file.
+
+        Parameters
+        ----------
+        payload: str
+            Pre-formatted metadata text to append to the log.
+
+        Side Effects
+        ------------
+        Creates parent directories on demand and persists metadata entries.
+        Emits a warning when file operations fail.
+        """
+        path = self.settings.meta_log_file_path
+        normalized = normalize_log_path(path)
+        if normalized != path:
+            self.settings.meta_log_file_path = normalized
+            with contextlib.suppress(Exception):
+                save_settings(self.settings)
+        target = os.path.expanduser(self.settings.meta_log_file_path)
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            stamp = datetime.now(timezone.utc).isoformat()
+            with open(target, "a", encoding="utf-8") as handle:
+                handle.write(f"[{stamp}] metadata\n{payload}\n\n")
+        except Exception as exc:
+            print(self._color(f"warning: failed to write metadata log: {exc}", "yellow"))
+
+    def chat(self, initial_prompt: Optional[str] = None) -> None:
+        """Enter chat mode or send an inline prompt immediately.
+
+        Parameters
+        ----------
+        initial_prompt: Optional[str]
+            When provided and non-empty, the prompt is executed immediately
+            without entering multi-line mode. Otherwise, the user is prompted
+            for multi-line input terminated by an empty line.
+        """
+
+        if initial_prompt and initial_prompt.strip():
+            self.ask(initial_prompt)
+            return
+
         print("Enter message. End with an empty line:")
         lines: list[str] = []
         while True:
@@ -464,9 +656,15 @@ class DevSession:
         print("stream [on|off] [live|nolive] Toggle streaming and live printing")
         print("options [..]                  Configure persistent options (verbosity, log file)")
         print("ask <prompt>                  Send a one-line prompt")
-        print("chat                           Enter multi-line prompt mode")
+        print("chat [<prompt>]               Enter multi-line mode or send inline prompt")
+        print("(any other text)               Shortcut for 'ask <text>'")
         print("help                           Show this help")
         print("quit | exit                    Leave the terminal")
+        print("\nExamples:")
+        print("  verbosity low                  # set log level to WARNING")
+        print("  options metadata mode table    # show metadata as a table")
+        print("  options metadata log on ~/meta.log  # append metadata to file")
+        print("  chat what is new               # inline chat invocation")
 
 
 def _parse_stream_args(tokens: list[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -505,26 +703,45 @@ def handle_shell(args: argparse.Namespace) -> int:
     session.status()
 
     while True:
-        raw = _readline("dev> ").strip()
-        if raw.lower() in {"quit", "exit"}:
+        raw = _readline("debug> ")
+        stripped = raw.strip()
+        if stripped.lower() in {"quit", "exit"}:
             try:
                 if getattr(session, "_history_path", None):
                     readline.write_history_file(session._history_path)  # type: ignore[arg-type]
             except Exception as _exc:  # pragma: no cover - best-effort history persistence
                 _ = _exc
             return 0
-        if not raw:
+        if not stripped:
             continue
 
-        parts = raw.split()
-        cmd, args_list = parts[0].lower(), parts[1:]
-        if not session_dispatch(session, cmd, args_list):
-            _handle_unknown_command(session, cmd)
+        _execute_command(session, stripped)
+
+def _execute_command(session: DevSession, raw_input: str) -> None:
+    """Dispatch a raw input line or treat it as a chat prompt.
+
+    Parameters
+    ----------
+    session: DevSession
+        Active session that should handle the command.
+    raw_input: str
+        User-provided input stripped of surrounding whitespace.
+    """
+
+    parts = raw_input.split()
+    cmd, args_list = parts[0].lower(), parts[1:]
+    handled = session_dispatch(session, cmd, args_list)
+    if not handled:
+        session.ask(raw_input)
+
 
 def session_dispatch(session: DevSession, cmd: str, args_list: list[str]) -> bool:
-    """Dispatch a single command to the appropriate `DevSession` method.
+    """Dispatch a single command to the appropriate ``DevSession`` method.
 
-    Returns True if handled, False if unknown.
+    Returns
+    -------
+    bool
+        ``True`` if the command was handled, ``False`` to fall back to chat.
     """
     if cmd == "help":
         session.help()
@@ -556,21 +773,7 @@ def session_dispatch(session: DevSession, cmd: str, args_list: list[str]) -> boo
         session.ask(text)
         return True
     if cmd == "chat":
-        session.chat()
+        inline = " ".join(args_list).strip()
+        session.chat(inline or None)
         return True
     return False
-
-def _handle_unknown_command(session: DevSession, cmd: str) -> None:
-    """Print a helpful message for unknown commands with suggestions."""
-    suggestions = []
-    try:
-        suggestions = [c for c in getattr(session, "_commands", []) if c.startswith(cmd)]
-    except Exception:
-        suggestions = []
-    msg = "unknown command — try 'help'"
-    if suggestions:
-        msg += "; did you mean: " + ", ".join(suggestions[:3])
-    try:
-        print(session._color(msg, "red"))
-    except Exception:
-        print(msg)

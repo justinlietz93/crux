@@ -1,5 +1,7 @@
 # CLI Issues TODO Checklist
 
+Review the codebase to get familiar, then examine this TODO_CHECKLIST.md for your tasks.
+
 This document tracks known issues in the Crux Providers CLI interactive shell (`python -m crux_providers.service.cli shell`). Issues are prioritized by impact on usability. Mark items as [DONE], [STARTED], [RETRYING], [DEBUGGGING], [NOT STARTED], as you go and document your work under each item as you work. 
 
 You should not remain stagnant on an issue for too long, if you get stuck on an item and it's marked [RETRYING] or [DEBUGGING], put an x# next to it, where # is the number of times you've attempted resolving it, for example [DEBUGGING x2]. 

@@ -29,6 +29,7 @@ from importlib import import_module
 from typing import Any, Dict, Mapping, Optional, Tuple, Type
 
 from .dto.adapter_params import AdapterParams
+from ..config.env import use_mock_providers
 
 
 class UnknownProviderError(Exception):
@@ -84,6 +85,7 @@ class ProviderFactory:
         "openrouter": {"module": "crux_providers.openrouter.client", "class": "OpenRouterProvider"},
         "ollama": {"module": "crux_providers.ollama.client", "class": "OllamaProvider"},
         "xai": {"module": "crux_providers.xai.client", "class": "XAIProvider"},
+        "mock": {"module": "crux_providers.mock.client", "class": "MockProvider"},
     }
 
     @classmethod
@@ -123,7 +125,12 @@ class ProviderFactory:
         name = (provider or "").lower().strip()
         spec = cls._PROVIDERS.get(name)
         if not spec:
+            if use_mock_providers():
+                return cls._create_mock(name, merged_kwargs)
             raise UnknownProviderError(f"Unknown provider '{provider}'")
+
+        if use_mock_providers() and name != "mock":
+            return cls._create_mock(name, merged_kwargs)
 
         module_path, class_name = spec["module"], spec["class"]
 
@@ -154,6 +161,29 @@ class ProviderFactory:
             raise UnknownProviderError(
                 f"Failed to initialize provider '{provider}': {exc}"
             ) from exc
+
+    @staticmethod
+    def _create_mock(provider: str, kwargs: Mapping[str, Any]) -> Any:
+        """Instantiate the mock provider for the requested canonical provider.
+
+        Parameters
+        ----------
+        provider: str
+            Canonical provider name requested by the caller (e.g., ``"openai"``).
+        kwargs: Mapping[str, Any]
+            Optional constructor overrides forwarded from ``create``.
+
+        Returns
+        -------
+        Any
+            Configured ``MockProvider`` instance representing ``provider``.
+        """
+
+        from ..mock.client import MockProvider  # local import to avoid circular deps
+
+        fixture_name = str(kwargs.get("fixture_name", "default"))
+        catalog = kwargs.get("catalog") if isinstance(kwargs.get("catalog"), dict) else None
+        return MockProvider(provider=provider, fixture_name=fixture_name, catalog=catalog)
 
     @classmethod
     def supported(cls) -> Tuple[str, ...]:

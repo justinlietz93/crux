@@ -10,10 +10,32 @@ DB service layer without reaching into internals.
 from __future__ import annotations
 
 import atexit
-from typing import Iterator
+from typing import Iterator, TYPE_CHECKING
 from contextlib import suppress
 
 import pytest
+
+if TYPE_CHECKING:
+    from crux_providers.mock import MockProvider
+
+
+@pytest.fixture()
+def enable_mock_providers(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Enable mock providers via environment toggle for the duration of a test."""
+
+    monkeypatch.setenv("CRUX_USE_MOCKS", "1")
+    yield
+    monkeypatch.delenv("CRUX_USE_MOCKS", raising=False)
+
+
+@pytest.fixture()
+def mock_provider(enable_mock_providers) -> Iterator["MockProvider"]:
+    """Yield a ``MockProvider`` instance configured for the default fixture."""
+
+    from crux_providers.mock import MockProvider
+
+    provider = MockProvider()
+    yield provider
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -31,6 +31,26 @@ from __future__ import annotations
 import os
 from typing import Dict, Iterable, Optional, Tuple
 
+
+def _is_truthy(value: Optional[str]) -> bool:
+    """Return ``True`` when an environment string signifies "enabled".
+
+    Parameters
+    ----------
+    value: Optional[str]
+        Raw environment value to interpret.
+
+    Returns
+    -------
+    bool
+        ``True`` when ``value`` is a common truthy token (``1``, ``true``,
+        ``yes``, ``on``, ``mock``, or ``*``); otherwise ``False``.
+    """
+
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on", "mock", "*"}
+
 # Canonical provider → env var mapping
 ENV_MAP: Dict[str, str] = {
     "openai": "OPENAI_API_KEY",
@@ -48,6 +68,25 @@ ENV_MAP: Dict[str, str] = {
 ENV_ALIASES: Dict[str, Tuple[str, ...]] = {
     "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
 }
+
+
+# Feature toggle for mock providers -----------------------------------------
+
+
+def use_mock_providers() -> bool:
+    """Return ``True`` when mock providers should be used globally.
+
+    The ``CRUX_USE_MOCKS`` environment variable enables the toggle. Any of the
+    following values (case-insensitive) activate mock routing: ``1``, ``true``,
+    ``yes``, ``on``, ``mock``, ``*``. All other values disable it.
+
+    Returns
+    -------
+    bool
+        ``True`` when mock providers should be substituted for live adapters.
+    """
+
+    return _is_truthy(os.environ.get("CRUX_USE_MOCKS"))
 
 
 def is_placeholder(val: Optional[str]) -> bool:
@@ -169,6 +208,7 @@ def set_canonical_env_if_missing(provider: str, value: Optional[str]) -> None:
 __all__ = [
     "ENV_MAP",
     "ENV_ALIASES",
+    "use_mock_providers",
     "is_placeholder",
     "get_env_var_name",
     "get_env_var_candidates",

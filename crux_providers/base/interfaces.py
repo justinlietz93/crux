@@ -10,11 +10,16 @@ from __future__ import annotations
 
 from .interfaces_parts import (
     HasDefaultModel,
+    IAgentRuntime,
+    IContextManager,
+    IMemoryStore,
+    IPluginRegistry,
     LLMProvider,
     ModelListingProvider,
     SupportsJSONOutput,
     SupportsResponsesAPI,
     SupportsStreaming,
+    SupportsToolUse,
 )
 
 __all__ = [
@@ -22,6 +27,11 @@ __all__ = [
     "SupportsStreaming",
     "SupportsJSONOutput",
     "SupportsResponsesAPI",
+    "SupportsToolUse",
     "ModelListingProvider",
     "HasDefaultModel",
+    "IMemoryStore",
+    "IContextManager",
+    "IAgentRuntime",
+    "IPluginRegistry",
 ]

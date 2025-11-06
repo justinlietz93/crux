@@ -13,11 +13,14 @@ from typing import Any, Dict, FrozenSet, Optional
 
 from ..interfaces import (
     HasDefaultModel,
+    IAgentRuntime,
+    IContextManager,
     LLMProvider,
     ModelListingProvider,
     SupportsJSONOutput,
     SupportsResponsesAPI,
     SupportsStreaming,
+    SupportsToolUse,
 )
 
 # String constants (avoid Enum overhead for simple set operations)
@@ -26,6 +29,9 @@ CAP_JSON = "json_output"
 CAP_RESPONSES_API = "responses_api"
 CAP_MODEL_LISTING = "model_listing"
 CAP_DEFAULT_MODEL = "default_model"
+CAP_TOOL_USE = "tool_use"
+CAP_CONTEXT_MANAGEMENT = "context_management"
+CAP_AGENT_RUNTIME = "agent_runtime"
 
 
 def detect_capabilities(provider: LLMProvider) -> FrozenSet[str]:  # type: ignore[type-arg]
@@ -59,6 +65,15 @@ def detect_capabilities(provider: LLMProvider) -> FrozenSet[str]:  # type: ignor
         and provider.default_model() is not None
     ):
         caps.add(CAP_DEFAULT_MODEL)
+    if (
+        isinstance(provider, SupportsToolUse)
+        and provider.supports_tool_use()
+    ):
+        caps.add(CAP_TOOL_USE)
+    if isinstance(provider, IContextManager):
+        caps.add(CAP_CONTEXT_MANAGEMENT)
+    if isinstance(provider, IAgentRuntime):
+        caps.add(CAP_AGENT_RUNTIME)
     return frozenset(caps)
 
 
@@ -138,6 +153,9 @@ __all__ = [
     "CAP_RESPONSES_API",
     "CAP_MODEL_LISTING",
     "CAP_DEFAULT_MODEL",
+    "CAP_TOOL_USE",
+    "CAP_CONTEXT_MANAGEMENT",
+    "CAP_AGENT_RUNTIME",
     "detect_capabilities",
     "normalize_modalities",
     "merge_capabilities",

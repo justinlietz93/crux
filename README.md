@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD001 MD003 MD005 MD007 MD022 MD032 -->
 #
 
-![alt text](assets/crux_banner.jpg)
+![alt text](crux_providers/assets/crux_banner.jpg)
 
 ***A reliable provider-agnostic LLM abstraction layer. Crux offers a turn-key provider client solution using Hybrid Clean Architecture patterns.***
 

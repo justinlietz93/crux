@@ -318,9 +318,20 @@ def post_keys(body: KeysBody, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[s
     env_to_provider = _build_env_to_provider_map()
     for env_name, key in (body.keys or {}).items():
         provider = env_to_provider.get(env_name)
-        if provider and isinstance(key, str) and key:
-            to_save[provider] = key
-            stored.append(env_name)
+        if not (provider and isinstance(key, str)):
+            continue
+        candidate = key.strip()
+        # Only persist reasonable, ASCII keys; drop masked/placeholder garbage
+        if not candidate:
+            continue
+        if not candidate.isascii():
+            continue
+        if set(candidate) == {"*"}:
+            continue
+        if "placeholder" in candidate.lower():
+            continue
+        to_save[provider] = candidate
+        stored.append(env_name)
     if to_save:
         # Persist via repository abstraction (DI path)
         for provider, key in to_save.items():
@@ -348,6 +359,22 @@ def get_keys(uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
         key = uow.keys.get_api_key(p) or ""
         raw[p] = key
     return {"ok": True, "keys": mask_keys_env(raw)}
+
+
+@app.delete("/api/keys")
+def delete_key(provider: str, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
+    """Delete a stored key for the given provider (case-insensitive).
+
+    TODO future: extend to multi-key per provider with labels for UI dropdowns.
+    """
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider is required")
+    try:
+        uow.keys.delete_api_key(provider.lower())
+        uow.commit()
+    except Exception as e:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"ok": True, "deleted": provider.lower()}
 
 
 @app.post("/api/prefs")

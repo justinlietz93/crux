@@ -1,65 +1,75 @@
 """
 OpenAI models fetcher.
 
-Purpose
-- List available models via the OpenAI SDK and persist a normalized snapshot to
-    the SQLite-backed model registry using ``save_provider_models`` (DB-first; no
-    JSON cache files are produced).
-- Fall back to the last cached snapshot from SQLite when the SDK or API key is
-    unavailable.
-
-Capability policy (data-first; no name heuristics)
-- Capabilities are derived from declared ``modalities`` only, then merged with
-    any previously cached capabilities for the same model id. We do NOT guess
-    capabilities from model names (no regex, no family-based heuristics).
-- "json_output" is always set to True because the provider accepts structured
-    output requests; adapters will still gate per-call behavior.
-
-Timeouts & retries
-- Blocking start phases are guarded by ``operation_timeout`` using durations
-    from ``get_timeout_config()``. There are no hardcoded numeric timeouts.
-- We log one structured fallback event on failure paths and then return cached
-    snapshots as per policy.
-
-Entrypoints recognized by the model registry repository:
-- ``run()`` (preferred)
-- ``get_models()/fetch_models()/update_models()/refresh_models()`` provided for convenience
+DB-first: lists models via the OpenAI SDK, normalizes, and persists to the
+SQLite model registry. Falls back to cached registry rows when online refresh
+fails; no JSON registries are used.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import io
+import json
+import os
+import sys
 from contextlib import suppress
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 try:
     from openai import OpenAI  # openai>=1.0.0
-except Exception:
+except Exception:  # pragma: no cover - SDK may be absent in some envs
     OpenAI = None  # type: ignore
 
-from ..base.get_models_base import save_provider_models, load_cached_models
-from ..base.models import ModelInfo
-from ..base.capabilities import normalize_modalities, merge_capabilities
-from ..base.repositories.keys import KeysRepository
+from ..base.capabilities import merge_capabilities, normalize_modalities
+from ..base.get_models_base import load_cached_models, save_provider_models
 from ..base.interfaces_parts.has_data import HasData
-from ..base.logging import get_logger, normalized_log_event, LogContext
+from ..base.logging import LogContext, get_logger, normalized_log_event
+from ..base.models import ModelInfo
+from ..base.repositories.keys import KeysRepository
 from ..base.timeouts import get_timeout_config, operation_timeout
-
 
 PROVIDER = "openai"
 _logger = get_logger("providers.openai.models")
+OBSERVED_CAPS_PATH = Path(__file__).resolve().parent / "openai-observed-capabilities.json"
+
+# Force UTF-8 to avoid UnicodeEncodeError on Windows consoles.
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+os.environ.setdefault("PYTHONUTF8", "1")
+try:
+    if sys.stdout and hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    if sys.stderr and hasattr(sys.stderr, "buffer"):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+
+def _load_observed_fallback() -> List[Dict[str, Any]]:
+    try:
+        with OBSERVED_CAPS_PATH.open("r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+        return [{"id": mid, "name": mid} for mid in data.keys()]
+    except Exception:
+        return []
+
+
+def _persist_fallback(models: List[Dict[str, Any]], source: str) -> None:
+    if not models:
+        return
+    save_provider_models(
+        PROVIDER,
+        [ModelInfo(id=m["id"], name=m["name"], provider=PROVIDER) for m in models],
+        fetched_via=source,
+        metadata={"source": source},
+    )
 
 
 def _fetch_via_sdk(api_key: str) -> List[Any]:
-    """Fetch raw model listings using the OpenAI SDK.
-
-    Returns a list of SDK objects or dict-like items. This function performs
-    no normalization; downstream helpers coerce items into ``ModelInfo``.
-    """
     if not OpenAI:
         raise RuntimeError("openai SDK not available")
     client = OpenAI(api_key=api_key)
     resp = client.models.list()
-    # Support both object (with `data`) and dict payloads
     if isinstance(resp, HasData):
         data = resp.data  # type: ignore[assignment]
     elif isinstance(resp, dict):
@@ -70,24 +80,12 @@ def _fetch_via_sdk(api_key: str) -> List[Any]:
 
 
 def _resolve_key() -> Optional[str]:
-    """Resolve the API key for the OpenAI provider or return None.
-
-    The key is retrieved from the shared ``KeysRepository``; callers should
-    gracefully handle the absence of a key by falling back to cached snapshots.
-    """
     return KeysRepository().get_api_key(PROVIDER)
 
 
 def run() -> List[Dict[str, Any]]:
-    """Preferred entrypoint: refresh online if possible, else return cached.
-
-    Returns a minimal list of dicts containing ``id`` and ``name`` for display
-    and selection. The full normalized snapshot is written to disk via
-    ``save_provider_models``.
-    """
     key = _resolve_key()
     if not key:
-        # No key available — serve cached snapshot and emit one structured log.
         normalized_log_event(
             _logger,
             "models.list.fallback",
@@ -102,31 +100,39 @@ def run() -> List[Dict[str, Any]]:
             failure_class="MissingAPIKey",
             fallback_used=True,
         )
-        return _cached_models()
-    enriched = _refresh_online(key)
-    return enriched if enriched is not None else _cached_models()
+        cached = _cached_models()
+        if cached:
+            return cached
+        observed = _load_observed_fallback()
+        _persist_fallback(observed, source="observed_fallback_missing_key")
+        return observed
+
+    online = _refresh_online(key)
+    if online:
+        return online
+    cached = _cached_models()
+    if cached:
+        return cached
+    observed = _load_observed_fallback()
+    _persist_fallback(observed, source="observed_fallback_sdk_missing")
+    return observed
 
 
-# -------------------- Helper Functions (extracted for testability & low CCN) --------------------
+# -------------------- Helpers --------------------
 
 def _cached_models() -> List[Dict[str, Any]]:
-    """Return cached models as minimal dictionaries (``id`` and ``name``).
-
-    This avoids network calls and preserves quick listing even when offline.
-    """
     snap = load_cached_models(PROVIDER)
-    return [{"id": m.id, "name": m.name} for m in snap.models]
+    cached = [{"id": m.id, "name": m.name} for m in snap.models]
+    if cached:
+        return cached
+    observed = _load_observed_fallback()
+    if observed:
+        _persist_fallback(observed, source="observed_fallback_cache_miss")
+    return observed
 
 
 def _refresh_online(api_key: str) -> Optional[List[Dict[str, Any]]]:
-    """Attempt to fetch and persist the latest models via the SDK.
-
-    Builds ``ModelInfo`` objects with data-first capability inference (modalities
-    only) and merges any previously cached capabilities for continuity. On failure,
-    returns None so the caller can serve the cached snapshot instead.
-    """
     if not OpenAI:
-        # SDK not installed — log once and allow caller to fallback to cache
         normalized_log_event(
             _logger,
             "models.list.fallback",
@@ -142,28 +148,61 @@ def _refresh_online(api_key: str) -> Optional[List[Dict[str, Any]]]:
             fallback_used=True,
         )
         return None
-    try:
-        timeout_cfg = get_timeout_config()
-        with operation_timeout(timeout_cfg.start_timeout_seconds):
-            items = _fetch_via_sdk(api_key)
-    except Exception as e:  # noqa: BLE001 - broad guard with structured fallback log
-        normalized_log_event(
-            _logger,
-            "models.list.error",
-            LogContext(provider=PROVIDER, model="models"),
-            phase="start",
-            attempt=None,
-            error_code=None,
-            emitted=False,
-            provider=PROVIDER,
-            operation="fetch_models",
-            stage="start",
-            failure_class=e.__class__.__name__,
-            fallback_used=True,
-        )
+
+    items: Optional[List[Any]] = None
+    attempts = 0
+    while attempts < 2:
+        attempts += 1
+        try:
+            timeout_cfg = get_timeout_config()
+            with operation_timeout(timeout_cfg.start_timeout_seconds):
+                items = _fetch_via_sdk(api_key)
+            break
+        except UnicodeEncodeError:
+            try:
+                if sys.stdout and hasattr(sys.stdout, "buffer"):
+                    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+                if sys.stderr and hasattr(sys.stderr, "buffer"):
+                    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+            if attempts >= 2:
+                normalized_log_event(
+                    _logger,
+                    "models.list.error",
+                    LogContext(provider=PROVIDER, model="models"),
+                    phase="start",
+                    attempt=None,
+                    error_code=None,
+                    emitted=False,
+                    provider=PROVIDER,
+                    operation="fetch_models",
+                    stage="start",
+                    failure_class="UnicodeEncodeError",
+                    fallback_used=True,
+                )
+                return None
+            continue
+        except Exception as e:  # noqa: BLE001
+            normalized_log_event(
+                _logger,
+                "models.list.error",
+                LogContext(provider=PROVIDER, model="models"),
+                phase="start",
+                attempt=None,
+                error_code=None,
+                emitted=False,
+                provider=PROVIDER,
+                operation="fetch_models",
+                stage="start",
+                failure_class=e.__class__.__name__,
+                fallback_used=True,
+            )
+            return None
+
+    if not items:
         return None
 
-    # Map cached capabilities by model id for merge (data-first, no heuristics)
     cached = load_cached_models(PROVIDER)
     cached_caps: Dict[str, Dict[str, Any]] = {m.id: (m.capabilities or {}) for m in cached.models}
 
@@ -174,7 +213,6 @@ def _refresh_online(api_key: str) -> Optional[List[Dict[str, Any]]]:
         if mi is not None:
             enriched.append(mi)
 
-    # Persist best-effort snapshot (already normalized ModelInfo → no extra inference)
     save_provider_models(
         PROVIDER,
         enriched,
@@ -184,7 +222,6 @@ def _refresh_online(api_key: str) -> Optional[List[Dict[str, Any]]]:
             "capability_policy": "modalities+cached_merge",
         },
     )
-    # Emit a single normalized success event with a small summary
     normalized_log_event(
         _logger,
         "models.list.ok",
@@ -198,22 +235,12 @@ def _refresh_online(api_key: str) -> Optional[List[Dict[str, Any]]]:
         stage="finalize",
         count=len(enriched),
     )
-    # Return simplified list required by registry usage (id + name)
     return [{"id": it.id, "name": it.name} for it in enriched]
 
 
 def _enrich_item_to_modelinfo(
     it: Any, client: Any, cached_caps: Dict[str, Dict[str, Any]]
 ) -> Optional[ModelInfo]:
-    """Convert a raw SDK item to ``ModelInfo`` with data-first capabilities.
-
-    - Extracts id/name and a best-effort context length from either the list item
-      or a per-model retrieve() call when available.
-    - Derives capabilities from declared ``modalities`` only, then merges with
-      any cached capabilities for the same id. Always sets ``json_output=True``.
-
-    Returns ``None`` if an id cannot be determined.
-    """
     mid = _first_attr(it, ("id", "model", "name"))
     if not mid:
         return None
@@ -237,7 +264,6 @@ def _enrich_item_to_modelinfo(
     if context_length is None and input_token_limit is not None:
         context_length = input_token_limit
 
-    # Capabilities: modalities → caps; merge with cached; ensure json_output
     caps = normalize_modalities(modalities)
     prior = cached_caps.get(str(mid)) or {}
     caps = merge_capabilities(prior, caps)
@@ -257,20 +283,13 @@ def _enrich_item_to_modelinfo(
         capabilities=caps,
         updated_at=None,
     )
-    # For completeness, set updated_at from created epoch if available
     if isinstance(created, (int, float)):
         with suppress(Exception):
-            mi.updated_at = None  # Keep date derivation to base if needed elsewhere
+            mi.updated_at = None
     return mi
 
 
 def _first_attr(obj: Any, names) -> Any:
-    """Return the first non-None attribute or dict key value found.
-
-    Tries attribute access first (for SDK objects), then falls back to dict
-    key lookup when ``obj`` is a mapping-like. Narrow guards avoid masking
-    unrelated errors.
-    """
     if obj is None:
         return None
     for n in names:
@@ -285,55 +304,20 @@ def _first_attr(obj: Any, names) -> Any:
     return None
 
 
-# Local helpers removed in favor of base.capabilities functions
-
-
 # Aliases for repository compatibility
 def get_models() -> List[Dict[str, Any]]:
-    """Return a list of available OpenAI models.
-
-    This function is an alias for the preferred entrypoint ``run()`` and provides
-    a minimal list of model dictionaries for compatibility with the model registry.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries, each containing ``id`` and ``name`` keys.
-    """
     return run()
 
 
 def fetch_models() -> List[Dict[str, Any]]:
-    """Return a list of available OpenAI models.
-
-    This function is an alias for the preferred entrypoint ``run()`` and provides
-    a minimal list of model dictionaries for compatibility with the model registry.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries, each containing ``id`` and ``name`` keys.
-    """
     return run()
 
 
 def update_models() -> List[Dict[str, Any]]:
-    """Return a list of available OpenAI models.
-
-    This function is an alias for the preferred entrypoint ``run()`` and provides
-    a minimal list of model dictionaries for compatibility with the model registry.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries, each containing ``id`` and ``name`` keys.
-    """
     return run()
 
 
 def refresh_models() -> List[Dict[str, Any]]:
-    """Return a list of available OpenAI models.
-
-    This function is an alias for the preferred entrypoint ``run()`` and provides
-    a minimal list of model dictionaries for compatibility with the model registry.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries, each containing ``id`` and ``name`` keys.
-    """
     return run()
 
 

@@ -1,0 +1,190 @@
+%% Domain Model Diagram: Core Entities and Value Objects
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+classDiagram
+    direction TB
+    
+    %% Core Request/Response Entities
+    class ChatRequest {
+        <<Entity>>
+        +messages: List~Message~
+        +model: str
+        +provider: Optional~str~
+        +temperature: Optional~float~
+        +max_tokens: Optional~int~
+        +stream: bool
+        +json_schema: Optional~dict~
+        +tools: Optional~List~Tool~~
+        +validate() bool
+    }
+    
+    class Message {
+        <<Value Object>>
+        +role: Role
+        +content: str | List~ContentPart~
+        +name: Optional~str~
+        +tool_calls: Optional~List~ToolCall~~
+        +to_dict() dict
+    }
+    
+    class ContentPart {
+        <<Value Object>>
+        +type: ContentPartType
+        +text: Optional~str~
+        +image_url: Optional~str~
+        +tool_use_id: Optional~str~
+        +to_dict() dict
+    }
+    
+    class ChatResponse {
+        <<Entity>>
+        +content: str | List~ContentPart~
+        +role: Role
+        +metadata: ProviderMetadata
+        +finish_reason: Optional~str~
+        +tool_calls: Optional~List~ToolCall~~
+        +usage: Optional~TokenUsage~
+        +to_dict() dict
+    }
+    
+    class ProviderMetadata {
+        <<Value Object>>
+        +provider: str
+        +model: str
+        +latency_ms: Optional~float~
+        +request_id: Optional~str~
+        +created_at: str (ISO8601)
+    }
+    
+    class TokenUsage {
+        <<Value Object>>
+        +prompt_tokens: Optional~int~
+        +completion_tokens: Optional~int~
+        +total_tokens: Optional~int~
+    }
+    
+    %% Model Registry Domain
+    class ModelInfo {
+        <<Entity>>
+        +id: str
+        +name: str
+        +provider: str
+        +capabilities: List~str~
+        +context_length: Optional~int~
+        +created_at: str
+        +to_dict() dict
+    }
+    
+    class ModelRegistrySnapshot {
+        <<Aggregate Root>>
+        +models: List~ModelInfo~
+        +timestamp: str
+        +providers: List~str~
+        +get_by_provider(provider) List~ModelInfo~
+        +get_by_id(model_id) Optional~ModelInfo~
+    }
+    
+    %% Streaming Domain
+    class StreamMetrics {
+        <<Value Object>>
+        +time_to_first_token_ms: Optional~float~
+        +total_duration_ms: Optional~float~
+        +emitted_count: int
+        +provider: str
+        +model: str
+        +to_dict() dict
+    }
+    
+    %% Configuration Domain
+    class AdapterParams {
+        <<Value Object>>
+        +api_key: Optional~str~
+        +base_url: Optional~str~
+        +timeout: Optional~int~
+        +headers: Optional~dict~
+        +extra: Optional~dict~
+        +model_dump() dict
+    }
+    
+    class TimeoutConfig {
+        <<Value Object>>
+        +start_timeout: float
+        +total_timeout: float
+        +read_timeout: Optional~float~
+    }
+    
+    %% Error Domain
+    class ProviderError {
+        <<Exception>>
+        +code: ErrorCode
+        +message: str
+        +provider: str
+        +details: Optional~dict~
+    }
+    
+    class ErrorCode {
+        <<Enumeration>>
+        UNKNOWN
+        TIMEOUT
+        AUTH_ERROR
+        RATE_LIMIT
+        INVALID_REQUEST
+        MODEL_NOT_FOUND
+        UNSUPPORTED
+    }
+    
+    %% Capabilities Domain
+    class ObservedCapability {
+        <<Value Object>>
+        +provider: str
+        +model: str
+        +capability: str
+        +observed_at: str
+        +confidence: float
+    }
+    
+    %% Enumerations
+    class Role {
+        <<Enumeration>>
+        SYSTEM
+        USER
+        ASSISTANT
+        TOOL
+    }
+    
+    class ContentPartType {
+        <<Enumeration>>
+        TEXT
+        IMAGE
+        TOOL_USE
+        TOOL_RESULT
+    }
+    
+    %% Relationships - Composition
+    ChatRequest "1" *-- "1..*" Message : contains
+    Message "1" *-- "0..*" ContentPart : contains
+    ChatResponse "1" *-- "1" ProviderMetadata : has
+    ChatResponse "1" *-- "0..1" TokenUsage : has
+    ChatResponse "1" *-- "0..*" ContentPart : contains
+    
+    ModelRegistrySnapshot "1" *-- "0..*" ModelInfo : aggregates
+    
+    ProviderError "1" *-- "1" ErrorCode : has
+    
+    %% Relationships - Association
+    ChatRequest ..> Role : uses
+    Message ..> Role : uses
+    ContentPart ..> ContentPartType : uses
+    ChatResponse ..> Role : uses
+    
+    AdapterParams ..> TimeoutConfig : configures
+    StreamMetrics ..> ProviderMetadata : relates to
+    
+    ObservedCapability ..> ModelInfo : describes
+    
+    %% Invariants (notes)
+    note for ChatRequest "Invariants:<br/>• At least one message<br/>• Valid model identifier<br/>• Temperature in [0, 2]<br/>• Max tokens > 0"
+    note for ModelRegistrySnapshot "Aggregate Root:<br/>• Manages model collection<br/>• Immutable once created<br/>• Provides query methods"
+    note for StreamMetrics "Computed Value:<br/>• TTFT captured on first delta<br/>• Duration on finalization<br/>• Emitted count incremental"

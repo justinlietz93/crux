@@ -1,0 +1,142 @@
+%% Sequence Diagram: Streaming Chat Request Flow
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+sequenceDiagram
+    autonumber
+    actor User as SDK Consumer
+    participant Adapter as StreamingAdapter<br/>(e.g., AnthropicProvider)
+    participant StreamBase as BaseStreamingAdapter
+    participant Timeout as operation_timeout
+    participant SDK as Provider SDK<br/>(e.g., anthropic-sdk)
+    participant Provider as External Provider API
+    participant Metrics as StreamMetrics
+    participant Logger as Structured Logger
+    participant Repo as MetricsRepository
+
+    %% Request initiation
+    User->>Adapter: stream(ChatRequest)
+    activate Adapter
+    Adapter->>Adapter: Validate request
+    Adapter->>Adapter: Check streaming_supported()
+    
+    alt Streaming not supported
+        Adapter-->>User: ProviderError(UNSUPPORTED)
+    end
+    
+    %% Start streaming
+    Adapter->>StreamBase: start_stream()
+    activate StreamBase
+    
+    StreamBase->>Timeout: operation_timeout(30s)
+    activate Timeout
+    Note over StreamBase,Timeout: Timeout applies to<br/>stream start only
+    
+    StreamBase->>SDK: create_stream(messages, model)
+    activate SDK
+    SDK->>Provider: HTTPS POST<br/>with stream=true
+    activate Provider
+    
+    %% First delta
+    Provider-->>SDK: SSE: delta chunk 1<br/>{content, delta}
+    SDK-->>StreamBase: Stream opened
+    Timeout-->>StreamBase: ✓ Started within 30s
+    deactivate Timeout
+    
+    StreamBase->>Metrics: Start timer (TTFT)
+    activate Metrics
+    
+    SDK-->>Adapter: yield delta 1
+    deactivate SDK
+    
+    StreamBase->>StreamBase: Aggregate delta
+    StreamBase->>Metrics: Record TTFT<br/>(time_to_first_token_ms)
+    
+    Adapter-->>User: ChatResponse (partial 1)
+    deactivate StreamBase
+    deactivate Adapter
+    
+    %% Subsequent deltas
+    loop For each delta
+        activate Provider
+        Provider-->>SDK: SSE: delta chunk N
+        activate SDK
+        SDK-->>Adapter: yield delta N
+        activate Adapter
+        activate StreamBase
+        StreamBase->>StreamBase: Aggregate delta
+        StreamBase->>Metrics: Increment emitted_count
+        Adapter-->>User: ChatResponse (partial N)
+        deactivate StreamBase
+        deactivate Adapter
+        deactivate SDK
+        deactivate Provider
+    end
+    
+    %% Stream finalization
+    activate Provider
+    Provider-->>SDK: SSE: [DONE]<br/>{usage}
+    deactivate Provider
+    activate SDK
+    SDK-->>Adapter: Stream complete
+    deactivate SDK
+    
+    activate Adapter
+    activate StreamBase
+    StreamBase->>Metrics: Record total_duration_ms
+    StreamBase->>Metrics: Capture token counts
+    
+    %% Logging & persistence
+    StreamBase->>Logger: Emit structured log<br/>{provider, operation, stage=finalize,<br/>ttft, latency, tokens}
+    activate Logger
+    Logger-->>StreamBase: ✓ logged
+    deactivate Logger
+    
+    alt Metrics export enabled
+        StreamBase->>Repo: record_metrics(StreamMetrics)
+        activate Repo
+        Repo->>Repo: INSERT metrics table
+        Repo-->>StreamBase: ✓ persisted
+        deactivate Repo
+    end
+    
+    Metrics-->>StreamBase: Final metrics
+    deactivate Metrics
+    StreamBase-->>Adapter: finalize_stream(metrics)
+    deactivate StreamBase
+    Adapter-->>User: ChatResponse (final)<br/>+ metadata + metrics
+    deactivate Adapter
+    
+    %% Error paths
+    alt Mid-stream error
+        activate Provider
+        Provider-->>SDK: Connection lost / Error
+        deactivate Provider
+        activate SDK
+        SDK-->>Adapter: Exception
+        deactivate SDK
+        activate Adapter
+        activate StreamBase
+        StreamBase->>Logger: Log error<br/>(stage=mid_stream, failure_class)
+        StreamBase->>Metrics: Capture partial metrics
+        StreamBase-->>Adapter: ProviderError
+        deactivate StreamBase
+        Adapter-->>User: Raise ProviderError<br/>(partial data lost)
+        deactivate Adapter
+    end
+    
+    alt Timeout during start
+        activate Timeout
+        Timeout->>Timeout: 30s elapsed
+        Timeout-->>StreamBase: TimeoutError
+        deactivate Timeout
+        activate StreamBase
+        StreamBase->>Logger: Log timeout<br/>(stage=start)
+        StreamBase-->>Adapter: ProviderError(TIMEOUT)
+        deactivate StreamBase
+        Adapter-->>User: ProviderError(TIMEOUT)
+    end
+
+    %% Notes
+    Note over User,Repo: Key Patterns:<br/>• BaseStreamingAdapter enforces contract<br/>• Timeout applies to start only (not each delta)<br/>• TTFT captured on first delta<br/>• Metrics logged at finalization<br/>• Mid-stream errors logged + raised<br/>• Partial data not recoverable on error

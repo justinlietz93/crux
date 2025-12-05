@@ -1,0 +1,103 @@
+%% Dataflow Diagram: End-to-End Data Movement
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+graph LR
+    classDef source fill:#a8dadc,stroke:#457b9d,stroke-width:2px,color:#000
+    classDef process fill:#f1faee,stroke:#a8dadc,stroke-width:2px,color:#000
+    classDef storage fill:#e63946,stroke:#800f2f,stroke-width:2px,color:#fff
+    classDef external fill:#457b9d,stroke:#1d3557,stroke-width:2px,color:#fff
+
+    %% Data Sources
+    USER[User Request<br/>ChatRequest DTO]:::source
+    ENV[Environment Variables<br/>API Keys, Config]:::source
+    PROVAPI[Provider APIs<br/>OpenAI, Anthropic, etc.]:::external
+
+    %% Processing Stages
+    FACTORY[Provider Factory<br/>Adapter Creation]:::process
+    ADAPTER[Provider Adapter<br/>Request Transformation]:::process
+    VALIDATE[Input Validation<br/>Size Guard, Schema]:::process
+    TIMEOUT[Timeout Guard<br/>operation_timeout]:::process
+    HTTP[HTTP Client Pool<br/>Connection Reuse]:::process
+    NORMALIZE[Response Normalization<br/>Provider-specific → DTO]:::process
+    STREAM[Streaming Aggregation<br/>Delta → Full Response]:::process
+    METRICS[Metrics Capture<br/>TTFT, Latency, Tokens]:::process
+
+    %% Storage Systems
+    SQLITE[(SQLite WAL<br/>crux_providers.db)]:::storage
+    MODELREG[Model Registry Table<br/>provider, model_id, capabilities]:::storage
+    KEYSTORE[Key Vault Table<br/>provider, api_key]:::storage
+    CHATLOG[Chat Log Table<br/>request, response, metadata]:::storage
+    METRICSDB[Metrics Table<br/>latency, ttft, tokens]:::storage
+    CACHE[In-Memory Cache<br/>Model Listings TTL:60s]:::storage
+
+    %% Logs & Observability
+    STRUCTLOG[Structured Logs<br/>JSON Format<br/>provider, operation, stage]:::storage
+    METRICSEXP[Metrics Exporter<br/>Prometheus/OTLP<br/>optional]:::external
+
+    %% Data Flows - Request Path
+    USER -->|1. Submit request| FACTORY
+    ENV -->|2. Resolve API key| KEYSTORE
+    KEYSTORE -->|3. Load key| FACTORY
+    FACTORY -->|4. Create adapter| ADAPTER
+    USER -->|5. ChatRequest| VALIDATE
+    VALIDATE -->|6. Validated| ADAPTER
+    ADAPTER -->|7. Transform format| TIMEOUT
+    TIMEOUT -->|8. Guard start| HTTP
+    HTTP -->|9. HTTPS POST| PROVAPI
+    
+    %% Response Path
+    PROVAPI -->|10. Response JSON| HTTP
+    HTTP -->|11. Deserialize| NORMALIZE
+    
+    alt Standard Chat
+        NORMALIZE -->|12a. ChatResponse DTO| METRICS
+        METRICS -->|13a. Capture latency| CHATLOG
+        CHATLOG -->|14a. Persist| SQLITE
+        METRICS -->|15a. Record| METRICSDB
+        METRICSDB -->|16a. Persist| SQLITE
+    end
+    
+    alt Streaming Chat
+        PROVAPI -->|10b. SSE stream| STREAM
+        STREAM -->|11b. Aggregate deltas| METRICS
+        METRICS -->|12b. Capture TTFT| STRUCTLOG
+        STREAM -->|13b. Final response| NORMALIZE
+        NORMALIZE -->|14b. ChatResponse DTO| CHATLOG
+        CHATLOG -->|15b. Persist| SQLITE
+        METRICS -->|16b. StreamMetrics| METRICSDB
+        METRICSDB -->|17b. Persist| SQLITE
+    end
+    
+    METRICS -->|17. Emit log| STRUCTLOG
+    METRICS -.->|18. Export (optional)| METRICSEXP
+    
+    %% Model Registry Flow
+    PROVAPI -->|Fetch models| MODELREG
+    MODELREG -->|Store| SQLITE
+    MODELREG -->|Populate| CACHE
+    CACHE -->|Serve listings| ADAPTER
+    
+    %% Read Path (Model Listings)
+    USER -->|Query models| CACHE
+    CACHE -->|Cache miss| MODELREG
+    MODELREG -->|Load from| SQLITE
+    SQLITE -->|Return models| CACHE
+    CACHE -->|Return cached| USER
+
+    %% Notes
+    subgraph Data_Stores [Persistent Storage]
+        SQLITE
+        MODELREG
+        KEYSTORE
+        CHATLOG
+        METRICSDB
+    end
+    
+    subgraph Observability [Observability Sinks]
+        STRUCTLOG
+        METRICSEXP
+    end
+    
+    note1[Data Lifecycle:<br/>• Requests: User → Adapter → Provider → SQLite<br/>• Responses: Provider → Normalization → DTOs → User<br/>• Models: Provider → Cache → SQLite (refresh cycle)<br/>• Metrics: Capture → Logs + DB + Optional Export<br/>• Keys: Env Vars → Key Vault → Adapters<br/>• All persistence via SQLite WAL mode<br/>• In-memory cache reduces DB load]

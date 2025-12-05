@@ -1,0 +1,101 @@
+{
+  "system": "Crux Providers",
+  "commit": "5f656cd2c1962d2bde2dcfa17252b1821885c998",
+  "generated_at": "2025-12-05T17:12:30Z",
+  "languages": ["Python"],
+  "containers": [
+    {
+      "name": "Provider Adapters",
+      "tech": "Python + Provider SDKs",
+      "responsibilities": [
+        "Normalize provider-specific APIs to unified interface",
+        "Handle authentication and API key management",
+        "Transform requests/responses to DTOs",
+        "Implement streaming when supported"
+      ],
+      "deps": ["Base Abstractions", "HTTP Client Pool", "Configuration"]
+    },
+    {
+      "name": "Base Abstractions",
+      "tech": "Python Protocols + Pydantic",
+      "responsibilities": [
+        "Define provider-agnostic interfaces",
+        "Provide DTOs for requests/responses",
+        "Implement streaming adapters",
+        "Manage timeouts and cancellation"
+      ],
+      "deps": []
+    },
+    {
+      "name": "Persistence Layer",
+      "tech": "SQLite (WAL mode)",
+      "responsibilities": [
+        "Store model registry",
+        "Persist chat logs",
+        "Record metrics",
+        "Manage API key vault"
+      ],
+      "deps": ["Base Abstractions"]
+    },
+    {
+      "name": "Service Layer",
+      "tech": "FastAPI + Uvicorn",
+      "responsibilities": [
+        "HTTP API endpoints",
+        "Request orchestration",
+        "Benchmark utilities"
+      ],
+      "deps": ["Provider Adapters", "Persistence Layer"]
+    }
+  ],
+  "pipelines": [
+    {
+      "name": "Chat Request (Non-Streaming)",
+      "entrypoints": ["service/app.py:chat_handler"]
+    },
+    {
+      "name": "Streaming Chat",
+      "entrypoints": ["*/client.py:stream"]
+    },
+    {
+      "name": "Model Registry Refresh",
+      "entrypoints": ["utils/refresh_all_models.py:main"]
+    }
+  ],
+  "stores": [
+    {
+      "type": "SQLite",
+      "usage": "Primary persistence",
+      "tables": ["model_registry", "keystore", "chat_logs", "metrics"]
+    }
+  ],
+  "metrics": {
+    "cycles": [],
+    "hotspots": [
+      "crux_providers/gemini/client.py (507 LOC)",
+      "crux_providers/service/cli/cli_shell.py (576 LOC)"
+    ],
+    "test_coverage": {
+      "overall": 85
+    },
+    "architecture_score": 4.4,
+    "total_loc": 29040,
+    "total_modules": 201
+  },
+  "risks": [
+    {
+      "id": "R6",
+      "title": "Provider SDK Version Skew",
+      "severity": "H",
+      "where": "requirements.txt",
+      "rationale": "Unpinned SDKs risk breaking changes"
+    },
+    {
+      "id": "R9",
+      "title": "Key Vault Encryption",
+      "severity": "H",
+      "where": "persistence/sqlite/keystore_repo.py",
+      "rationale": "API keys stored unencrypted at rest"
+    }
+  ]
+}

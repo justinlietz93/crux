@@ -1,0 +1,137 @@
+%% Sequence Diagram: Model Registry Refresh Flow
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+sequenceDiagram
+    autonumber
+    actor CLI as CLI User<br/>(or Scheduled Job)
+    participant Script as refresh_all_models.py
+    participant Factory as ProviderFactory
+    participant Fetcher as get_<provider>_models
+    participant Timeout as operation_timeout
+    participant HTTP as HTTP Client
+    participant Provider as Provider API
+    participant Repo as ModelRegistryRepository
+    participant DB as SQLite (WAL mode)
+    participant Cache as In-Memory Cache
+
+    %% Batch refresh initiation
+    CLI->>Script: python -m crux_providers.utils.refresh_all_models<br/>--providers openai,anthropic,gemini
+    activate Script
+    
+    Script->>Script: Parse provider list<br/>(default: all 7 providers)
+    Script->>Script: Set parallelism<br/>(default: 1, configurable)
+    
+    %% Per-provider refresh (parallelizable)
+    loop For each provider (sequential or parallel)
+        Script->>Factory: Resolve provider fetcher<br/>get_<provider>_models
+        activate Factory
+        Factory-->>Script: Fetcher module
+        deactivate Factory
+        
+        Script->>Fetcher: run()
+        activate Fetcher
+        
+        %% Timeout guard
+        Fetcher->>Timeout: operation_timeout(30s)
+        activate Timeout
+        
+        Fetcher->>HTTP: GET /models (or equivalent)
+        activate HTTP
+        HTTP->>Provider: HTTPS request
+        activate Provider
+        
+        alt Success
+            Provider-->>HTTP: 200 OK<br/>[{id, name, capabilities}]
+            deactivate Provider
+            HTTP-->>Fetcher: Response
+            deactivate HTTP
+            
+            Timeout-->>Fetcher: ✓ Within timeout
+            deactivate Timeout
+            
+            %% Parse and normalize
+            Fetcher->>Fetcher: Parse JSON
+            Fetcher->>Fetcher: Normalize to ModelInfo DTOs
+            Fetcher-->>Script: List[ModelInfo]
+            deactivate Fetcher
+            
+            %% Persist to registry
+            Script->>Repo: save_models(provider, models)
+            activate Repo
+            Repo->>DB: BEGIN TRANSACTION
+            activate DB
+            Repo->>DB: DELETE FROM model_registry<br/>WHERE provider=?
+            Repo->>DB: INSERT INTO model_registry<br/>VALUES (?, ?, ?, ?, ?)
+            DB-->>Repo: rows inserted
+            Repo->>DB: COMMIT
+            deactivate DB
+            Repo-->>Script: ✓ saved
+            deactivate Repo
+            
+            %% Update cache
+            Script->>Cache: Invalidate provider cache
+            activate Cache
+            Cache-->>Script: ✓ invalidated
+            deactivate Cache
+            
+        else Timeout
+            Timeout->>Timeout: 30s elapsed
+            Timeout-->>Fetcher: TimeoutError
+            deactivate Timeout
+            Fetcher->>Fetcher: Log failure<br/>(provider, operation=fetch_models,<br/>failure_class=TimeoutError)
+            
+            alt Fallback: Use cached models
+                Fetcher->>Repo: get_models(provider)
+                activate Repo
+                Repo->>DB: SELECT * FROM model_registry<br/>WHERE provider=?
+                activate DB
+                DB-->>Repo: cached rows
+                deactivate DB
+                Repo-->>Fetcher: List[ModelInfo] (cached)
+                deactivate Repo
+                Fetcher-->>Script: Cached models<br/>(fallback_used=true)
+            else No cache available
+                Fetcher-->>Script: Empty list + warning
+            end
+            deactivate Fetcher
+            
+        else Provider Error
+            Provider-->>HTTP: 4xx/5xx<br/>{error}
+            deactivate Provider
+            HTTP-->>Fetcher: Exception
+            deactivate HTTP
+            Fetcher->>Fetcher: Log failure<br/>(classify error)
+            
+            %% Fallback to cache
+            Fetcher->>Repo: get_models(provider)
+            activate Repo
+            Repo->>DB: SELECT cached
+            activate DB
+            DB-->>Repo: rows
+            deactivate DB
+            Repo-->>Fetcher: Cached models
+            deactivate Repo
+            Fetcher-->>Script: Cached models<br/>(fallback_used=true)
+            deactivate Fetcher
+        end
+    end
+    
+    %% Aggregation
+    Script->>Script: Aggregate results<br/>(success count, fallback count)
+    Script->>Script: Generate snapshot<br/>ModelRegistrySnapshot
+    Script->>Repo: save_snapshot(snapshot)
+    activate Repo
+    Repo->>DB: INSERT snapshot metadata
+    activate DB
+    DB-->>Repo: ✓
+    deactivate DB
+    Repo-->>Script: ✓ snapshot saved
+    deactivate Repo
+    
+    Script-->>CLI: Summary report<br/>(7 providers, 4 success, 3 fallback)
+    deactivate Script
+
+    %% Notes
+    Note over CLI,Cache: Key Patterns:<br/>• Batch refresh with configurable parallelism<br/>• Timeout-guarded HTTP per provider<br/>• Fallback to cached models on failure<br/>• WAL mode enables concurrent reads during write<br/>• In-memory cache invalidated after refresh<br/>• Structured logging for troubleshooting<br/>• Atomic updates per provider (DELETE + INSERT in txn)

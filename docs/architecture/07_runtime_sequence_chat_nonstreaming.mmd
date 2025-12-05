@@ -1,0 +1,97 @@
+%% Sequence Diagram: Non-Streaming Chat Request Flow
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+sequenceDiagram
+    autonumber
+    actor User as SDK Consumer
+    participant Factory as ProviderFactory
+    participant Adapter as ProviderAdapter<br/>(e.g., OpenAIProvider)
+    participant Timeout as operation_timeout
+    participant HTTP as HTTP Client Pool
+    participant Provider as External Provider API<br/>(e.g., OpenAI)
+    participant Repo as ChatLogRepository
+    participant DB as SQLite Database
+
+    %% Request initiation
+    User->>Factory: create("openai")
+    activate Factory
+    Factory->>Factory: Resolve module + class
+    Factory->>Adapter: __init__(api_key, ...)
+    activate Adapter
+    Adapter->>Adapter: Validate config
+    Adapter-->>Factory: adapter instance
+    deactivate Adapter
+    Factory-->>User: adapter
+    deactivate Factory
+
+    %% Chat request
+    User->>Adapter: chat(ChatRequest)
+    activate Adapter
+    Adapter->>Adapter: Validate request<br/>(size guard, schema)
+    
+    %% Timeout guard
+    Adapter->>Timeout: operation_timeout(30s)
+    activate Timeout
+    
+    %% Provider-specific transformation
+    Adapter->>Adapter: Transform to<br/>provider format
+    
+    %% HTTP call
+    Adapter->>HTTP: POST /v1/chat/completions
+    activate HTTP
+    HTTP->>Provider: HTTPS request<br/>(headers, body, timeout)
+    activate Provider
+    
+    alt Success
+        Provider-->>HTTP: 200 OK<br/>{choices, usage}
+        deactivate Provider
+        HTTP-->>Adapter: Response
+        deactivate HTTP
+        
+        Adapter->>Adapter: Parse + normalize<br/>to ChatResponse
+        Timeout-->>Adapter: ✓ Within timeout
+        deactivate Timeout
+        
+        %% Logging
+        Adapter->>Repo: log_chat(request, response)
+        activate Repo
+        Repo->>DB: INSERT INTO chat_logs
+        activate DB
+        DB-->>Repo: row_id
+        deactivate DB
+        Repo-->>Adapter: ✓ logged
+        deactivate Repo
+        
+        Adapter-->>User: ChatResponse
+        deactivate Adapter
+        
+    else Timeout
+        Timeout->>Timeout: Signal raised (30s)
+        Timeout-->>Adapter: TimeoutError
+        Adapter->>Adapter: Log failure<br/>(structured)
+        Adapter-->>User: ProviderError<br/>(TIMEOUT)
+        
+    else Provider Error
+        Provider-->>HTTP: 4xx/5xx<br/>{error}
+        deactivate Provider
+        HTTP-->>Adapter: Exception
+        deactivate HTTP
+        Adapter->>Adapter: Classify error<br/>(auth, rate_limit, etc.)
+        Adapter-->>User: ProviderError<br/>(code, message)
+        deactivate Adapter
+        
+    else Retry (Transient Error)
+        Provider-->>HTTP: 503 Service Unavailable
+        HTTP->>HTTP: Exponential backoff<br/>(attempt 1/3)
+        HTTP->>Provider: Retry request
+        Note over HTTP,Provider: Up to 3 attempts<br/>with backoff: 1s, 2s, 4s
+        Provider-->>HTTP: 200 OK (retry success)
+        HTTP-->>Adapter: Response
+        Adapter->>Adapter: Parse response
+        Adapter-->>User: ChatResponse
+    end
+
+    %% Notes
+    Note over User,DB: Key Patterns:<br/>• Timeout guard wraps blocking call<br/>• HTTP client pool reuses connections<br/>• Errors classified + structured logging<br/>• Chat logs persisted asynchronously<br/>• Retries on transient errors only

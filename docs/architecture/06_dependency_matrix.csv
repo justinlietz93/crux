@@ -1,0 +1,43 @@
+Module,openai.client,anthropic.client,gemini.client,ollama.client,openrouter.client,deepseek.client,xai.client,base.factory,base.interfaces,base.models,base.streaming,base.timeouts,base.resilience,base.http.client,base.logging,persistence.repos,persistence.engine,service.app,service.cli,config.defaults,config.env,Cycles
+openai.client,0,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,0,NONE
+anthropic.client,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1,0,NONE
+gemini.client,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1,0,NONE
+ollama.client,0,0,0,0,0,0,0,0,1,1,0,1,0,1,0,0,0,0,0,1,0,NONE
+openrouter.client,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,1,0,NONE
+deepseek.client,0,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,0,NONE
+xai.client,0,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,1,0,NONE
+base.factory,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,NONE
+base.interfaces,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,NONE
+base.models,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,NONE
+base.streaming,0,0,0,0,0,0,0,0,1,1,0,0,0,0,1,0,0,0,0,0,0,NONE
+base.timeouts,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,NONE
+base.resilience,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,NONE
+base.http.client,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,NONE
+base.logging,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,NONE
+persistence.repos,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,NONE
+persistence.engine,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,NONE
+service.app,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,NONE
+service.cli,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,1,0,0,0,0,0,NONE
+config.defaults,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,NONE
+config.env,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,NONE
+
+# Dependency Matrix Legend:
+# 1 = Module in row depends on module in column
+# 0 = No direct dependency
+# 
+# Key Findings:
+# - Total dependencies: 42
+# - Cycles detected: 0 (EXCELLENT)
+# - Highest fan-in: base.models (7 dependents)
+# - Highest fan-out: service.app (5 dependencies)
+# - Clean layering enforced
+# 
+# Instability Metrics:
+# - Provider adapters: High instability (depend on stable base)
+# - Base abstractions: Low instability (stable, few dependencies)
+# - Persistence: Medium instability (depends on base, used by service)
+# - Service layer: High instability (orchestration, many dependencies)
+# 
+# Repository: justinlietz93/crux
+# Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+# Generated: 2025-12-05

@@ -1,0 +1,180 @@
+digraph CruxProvidersDependencies {
+    // Dependency Graph: Crux Providers Module Dependencies
+    // Repository: justinlietz93/crux
+    // Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+    // Generated: 2025-12-05
+    
+    // Graph styling
+    rankdir=LR;
+    node [shape=box, style=filled, fillcolor=lightblue];
+    edge [color=darkgray];
+    
+    // Cluster by layer
+    subgraph cluster_providers {
+        label="Provider Adapters";
+        style=filled;
+        fillcolor=lightgray;
+        
+        openai [label="openai.client"];
+        anthropic [label="anthropic.client"];
+        gemini [label="gemini.client"];
+        ollama [label="ollama.client"];
+        openrouter [label="openrouter.client"];
+        deepseek [label="deepseek.client"];
+        xai [label="xai.client"];
+    }
+    
+    subgraph cluster_base {
+        label="Base Abstractions";
+        style=filled;
+        fillcolor=lightyellow;
+        
+        factory [label="base.factory"];
+        interfaces [label="base.interfaces"];
+        models [label="base.models"];
+        streaming [label="base.streaming"];
+        timeouts [label="base.timeouts"];
+        resilience [label="base.resilience"];
+        http_client [label="base.http.client"];
+        logging [label="base.logging"];
+        dto [label="base.dto"];
+    }
+    
+    subgraph cluster_persistence {
+        label="Persistence Layer";
+        style=filled;
+        fillcolor=lightgreen;
+        
+        repos [label="persistence.interfaces.repos"];
+        engine [label="persistence.sqlite.engine"];
+        model_reg [label="persistence.sqlite.model_registry_store"];
+        keystore [label="persistence.sqlite.keystore_repo"];
+        chatlog [label="persistence.sqlite.chatlog_repo"];
+        metrics_repo [label="persistence.sqlite.metrics_repo"];
+    }
+    
+    subgraph cluster_service {
+        label="Service Layer";
+        style=filled;
+        fillcolor=lightcyan;
+        
+        api_app [label="service.app"];
+        cli [label="service.cli"];
+        helpers [label="service.helpers"];
+        benchmark [label="service.benchmark"];
+    }
+    
+    subgraph cluster_config {
+        label="Configuration";
+        style=filled;
+        fillcolor=lightsalmon;
+        
+        defaults [label="config.defaults"];
+        env [label="config.env"];
+    }
+    
+    // Dependencies from providers to base
+    openai -> interfaces;
+    openai -> models;
+    openai -> dto;
+    openai -> timeouts;
+    
+    anthropic -> interfaces;
+    anthropic -> models;
+    anthropic -> streaming;
+    anthropic -> timeouts;
+    
+    gemini -> interfaces;
+    gemini -> models;
+    gemini -> streaming;
+    gemini -> timeouts;
+    
+    ollama -> interfaces;
+    ollama -> models;
+    ollama -> timeouts;
+    ollama -> http_client;
+    
+    openrouter -> interfaces;
+    openrouter -> models;
+    openrouter -> streaming;
+    openrouter -> timeouts;
+    
+    deepseek -> interfaces;
+    deepseek -> models;
+    deepseek -> timeouts;
+    
+    xai -> interfaces;
+    xai -> models;
+    xai -> timeouts;
+    
+    // Base internal dependencies
+    streaming -> interfaces;
+    streaming -> models;
+    streaming -> logging;
+    
+    timeouts -> resilience;
+    
+    http_client -> resilience;
+    http_client -> logging;
+    
+    // Factory dependencies
+    factory -> interfaces;
+    factory -> dto;
+    
+    // Service layer dependencies
+    api_app -> factory;
+    api_app -> models;
+    api_app -> repos;
+    api_app -> helpers;
+    
+    cli -> factory;
+    cli -> models;
+    cli -> repos;
+    
+    helpers -> models;
+    helpers -> repos;
+    
+    benchmark -> factory;
+    benchmark -> models;
+    
+    // Persistence dependencies
+    model_reg -> repos;
+    model_reg -> engine;
+    
+    keystore -> repos;
+    keystore -> engine;
+    
+    chatlog -> repos;
+    chatlog -> engine;
+    
+    metrics_repo -> repos;
+    metrics_repo -> engine;
+    
+    // Configuration usage (dashed = weak dependency)
+    openai -> defaults [style=dashed];
+    anthropic -> defaults [style=dashed];
+    gemini -> defaults [style=dashed];
+    ollama -> defaults [style=dashed];
+    openrouter -> defaults [style=dashed];
+    deepseek -> defaults [style=dashed];
+    xai -> defaults [style=dashed];
+    
+    factory -> env [style=dashed];
+    keystore -> env [style=dashed];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Legend";
+        style=filled;
+        fillcolor=white;
+        
+        solid_edge [label="Strong Dependency", shape=plaintext];
+        dashed_edge [label="Config/Weak Dep", shape=plaintext];
+        
+        solid_edge -> dashed_edge [style=solid];
+        dashed_edge -> solid_edge [style=dashed];
+    }
+    
+    // Notes
+    note [label="Key Observations:\n• Zero circular dependencies detected\n• Clean layering: Providers → Base → Persistence\n• Configuration injected via env/defaults\n• Factory pattern isolates adapter creation\n• Streaming uses adapter pattern\n• HTTP client pooled and reused", shape=note, fillcolor=lightyellow];
+}

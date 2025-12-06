@@ -21,17 +21,27 @@ from ....config.defaults import OLLAMA_DEFAULT_HOST
 
 
 def import_provider_module(provider: str) -> Optional[ModuleType]:
-    module_name = f"src.infrastructure.providers.{provider}.get_{provider}_models"
-    try:
-        return import_module(module_name)
-    except Exception:
+    """
+    Locate a provider refresher module. Preference order:
+    1) src.infrastructure.providers.<provider>.get_<provider>_models
+    2) crux_providers.<provider>.get_<provider>_models
+    3) package-relative to crux_providers (for embedded installs)
+    """
+    candidates = [
+        f"src.infrastructure.providers.{provider}.get_{provider}_models",
+        f"crux_providers.{provider}.get_{provider}_models",
+    ]
+    for module_name in candidates:
         try:
-            module_name_local = f".{provider}.get_{provider}_models"
-            return import_module(
-                module_name_local, package="src.infrastructure.providers"
-            )
+            return import_module(module_name)
         except Exception:
-            return None
+            continue
+    # Final relative attempt for embedded package usage
+    try:
+        module_name_local = f".{provider}.get_{provider}_models"
+        return import_module(module_name_local, package="crux_providers")
+    except Exception:
+        return None
 
 
 def find_refresh_function(mod: ModuleType) -> Optional[Callable]:

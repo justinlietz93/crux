@@ -1,0 +1,146 @@
+provider: mistral
+display_name: Mistral AI
+aliases:
+  - mistral
+
+metadata:
+  tier: production
+
+models:
+  - id: mistral-large-latest
+    name: Mistral Large (latest)
+    family: mistral-large
+    context_length: 131000
+    capabilities:
+      context_window: 131000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 2.0
+        output_per_1k_tokens_usd: 6.0
+
+  - id: mistral-medium-latest
+    name: Mistral Medium (latest)
+    family: mistral-medium
+    context_length: 131000
+    capabilities:
+      context_window: 131000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.4
+        output_per_1k_tokens_usd: 2.0
+
+  - id: codestral-latest
+    name: Codestral (latest)
+    family: codestral
+    context_length: 256000
+    capabilities:
+      context_window: 256000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.3
+        output_per_1k_tokens_usd: 0.9
+
+  - id: magistral-medium-latest
+    name: Magistral Medium (latest)
+    family: magistral-medium
+    context_length: 256000
+    capabilities:
+      context_window: 256000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.3
+        output_per_1k_tokens_usd: 0.9
+
+  - id: magistral-small-latest
+    name: Magistral Small (latest)
+    family: magistral-small
+    context_length: 40000
+    capabilities:
+      context_window: 40000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.3
+        output_per_1k_tokens_usd: 0.9
+
+  - id: devstral-small-latest
+    name: Devstral Small (latest)
+    family: devstral-small
+    context_length: 131000
+    capabilities:
+      context_window: 131000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: ministral-8b-latest
+    name: Ministral 8B (latest)
+    family: ministral-8b
+    context_length: 131000
+    capabilities:
+      context_window: 131000
+      reserved_output_token_space: 4096
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.10
+        output_per_1k_tokens_usd: 0.10
+
+  - id: ministral-3b-latest
+    name: Ministral 3B (latest)
+    family: ministral-3b
+    context_length: 131000
+    capabilities:
+      context_window: 131000
+      reserved_output_token_space: 4096
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.04
+        output_per_1k_tokens_usd: 0.04

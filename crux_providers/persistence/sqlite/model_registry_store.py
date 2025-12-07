@@ -43,6 +43,7 @@ from ...service.db import _get_conn  # type: ignore  # internal usage acceptable
 __all__ = [
     "save_models_snapshot",
     "load_models_snapshot",
+    "list_providers",
 ]
 
 
@@ -381,3 +382,22 @@ def load_models_snapshot(provider: str) -> Dict[str, Any]:
             "metadata": json.loads(meta_row[3]) if meta_row[3] else {},
         }
     return {"provider": provider, "models": models, **meta}
+
+
+def list_providers() -> List[str]:
+    """Return sorted list of provider identifiers present in the registry.
+
+    The list is derived primarily from ``model_registry_meta``; if that table
+    is empty (e.g., after manual schema creation), the helper falls back to
+    distinct providers present in ``model_registry``. This mirrors the view
+    used by the service layer for `/api/providers`.
+    """
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT provider FROM model_registry_meta ORDER BY provider")
+    rows = cur.fetchall()
+    if rows:
+        return [r[0] for r in rows]
+
+    cur.execute("SELECT DISTINCT provider FROM model_registry ORDER BY provider")
+    return [r[0] for r in cur.fetchall()]

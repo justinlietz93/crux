@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import json
 import os
 from contextlib import suppress
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Iterator
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 
 from crux_providers.base.factory import (
     ProviderFactory,
     UnknownProviderError,
 )
+from crux_providers.base.interfaces_parts.supports_streaming import SupportsStreaming
 from crux_providers.persistence.sqlite import get_uow
 from crux_providers.persistence.sqlite.engine import create_connection, init_schema
 from crux_providers.persistence.interfaces.repos import IUnitOfWork
@@ -22,7 +25,6 @@ from crux_providers.service.helpers import (
     set_env_for_provider,
 )
 from crux_providers.base.dto import ChatRequestDTO, MessageDTO
-from crux_providers.base.interfaces import ModelListingProvider
 from crux_providers.config.defaults import (
     PROVIDER_SERVICE_CORS_DEFAULT_ORIGINS,
 )
@@ -93,6 +95,26 @@ class ModelsQuery(BaseModel):
 
 
 app = FastAPI(title="Provider Service", version="0.1.0")
+
+
+@app.on_event("startup")
+def _seed_model_registry_from_catalog() -> None:
+    """Seed the SQLite-backed model registry from YAML catalogs when available.
+
+    This runs once at service startup and is best-effort: failures are
+    suppressed so that the service can still start even if the catalog or
+    PyYAML are misconfigured. Providers can still populate the registry via
+    refresh mechanisms when needed.
+    """
+    try:
+        from . import model_catalog_loader
+        from crux_providers.base.repositories.model_registry.repository import ModelRegistryRepository
+    except Exception:
+        # If the catalog loader or its dependencies are unavailable, skip seeding.
+        return
+    with suppress(Exception):  # pragma: no cover - best-effort
+        repo = ModelRegistryRepository()
+        model_catalog_loader.load_model_catalog(repository=repo)
 
 
 def get_uow_dep() -> IUnitOfWork:
@@ -185,30 +207,55 @@ def _create_adapter_or_raise(provider: str):
 
 
 def _build_models_response(provider: str, refresh: bool) -> Dict[str, Any]:
-    """Return the models endpoint payload for a provider.
+    """Return the models endpoint payload for a provider using the registry.
 
-    Resolves the provider adapter via ``_create_adapter_or_raise`` and, if the
-    adapter supports model listing, returns the snapshot dict. Otherwise,
-    returns a standardized error payload. This keeps the route thin and
-    consistent.
+    This implementation is DB-first and uses the model registry repository
+    as the single source of truth for model listings:
+
+    - If a YAML catalog or prior refresh has populated the registry, the
+      existing snapshot is returned directly.
+    - If ``refresh`` is True, the repository attempts a provider-specific
+      refresh before reading from SQLite.
 
     Parameters
     ----------
     provider: str
         Provider identifier from the request.
     refresh: bool
-        Whether to refresh the model list when supported by the adapter.
+        Whether to trigger a refresh before loading from the registry.
 
     Returns
     -------
     Dict[str, Any]
         JSON-serializable response payload used by ``get_models``.
     """
-    adapter = _create_adapter_or_raise(provider)
-    if isinstance(adapter, ModelListingProvider):
-        snapshot = adapter.list_models(refresh=refresh)
-        return {"ok": True, "snapshot": snapshot.to_dict()}
-    return {"ok": False, "error": f"Provider '{provider}' does not support model listing"}
+    provider_norm = provider.lower().strip()
+    if not provider_norm:
+        raise HTTPException(status_code=400, detail="provider is required")
+    try:
+        from crux_providers.base.repositories.model_registry.repository import ModelRegistryRepository
+
+        repo = ModelRegistryRepository()
+        snapshot = repo.list_models(provider_norm, refresh=refresh)
+    except Exception as e:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"ok": True, "snapshot": snapshot.to_dict()}
+
+
+def _build_providers_response() -> Dict[str, Any]:
+    """Return the providers endpoint payload using the model registry."""
+    try:
+        from crux_providers.base.repositories.model_registry.repository import ModelRegistryRepository
+    except Exception as e:  # pragma: no cover - defensive
+        raise HTTPException(
+            status_code=500, detail=f"Model registry unavailable: {e}"
+        ) from e
+    repo = ModelRegistryRepository()
+    try:
+        providers = repo.list_providers()
+    except Exception as e:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    return {"ok": True, "providers": providers}
 
 
 def _handle_chat(body: "ChatBody", uow: IUnitOfWork) -> Dict[str, Any]:
@@ -364,6 +411,9 @@ def get_keys(uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
 @app.delete("/api/keys")
 def delete_key(provider: str, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
     """Delete a stored key for the given provider (case-insensitive).
+
+    The `provider` identifier must match the canonical provider key used in the
+    key vault (for example, ``"openai"``, ``"anthropic"``, etc.).
 
     TODO future: extend to multi-key per provider with labels for UI dropdowns.
     """

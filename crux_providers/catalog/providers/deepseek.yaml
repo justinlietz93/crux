@@ -1,0 +1,46 @@
+provider: deepseek
+display_name: DeepSeek
+aliases:
+  - deepseek
+
+metadata:
+  tier: production
+
+models:
+  - id: deepseek-chat
+    name: DeepSeek Chat
+    family: deepseek
+    context_length: 64000
+    capabilities:
+      context_window: 64000
+      reserved_output_token_space: 8000
+      system_message: developer-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+      pricing:
+        input_per_1k_tokens_usd: 0.27
+        output_per_1k_tokens_usd: 1.10
+        cache_read_per_1k_tokens_usd: 0.07
+
+  - id: deepseek-reasoner
+    name: DeepSeek Reasoner
+    family: deepseek
+    context_length: 64000
+    capabilities:
+      context_window: 64000
+      reserved_output_token_space: 8000
+      system_message: developer-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+      pricing:
+        input_per_1k_tokens_usd: 0.55
+        output_per_1k_tokens_usd: 2.19
+        cache_read_per_1k_tokens_usd: 0.14

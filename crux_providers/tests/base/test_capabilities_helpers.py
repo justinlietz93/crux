@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from crux_providers.base.capabilities import (
+    apply_void_enrichment,
     load_observed,
     merge_capabilities,
     normalize_modalities,
@@ -70,3 +71,34 @@ def test_observed_round_trip(tmp_path: Path, monkeypatch) -> None:
     data3 = load_observed(provider)
     assert_true(data3.get("m1", {}).get("vision") is True, "vision true retained")
     assert_true(data3.get("m1", {}).get("audio") is False, "audio false retained")
+
+
+def test_apply_void_enrichment_adds_defaults_for_known_provider() -> None:
+    """Void enrichment should add baseline tool_format/system_message for known providers."""
+    caps = {}
+    enriched = apply_void_enrichment("openai", "gpt-test", caps)
+    assert_true(
+        enriched.get("tool_format") is not None,
+        f"tool_format default missing for openai: {enriched}",
+    )
+    assert_true(
+        enriched.get("system_message") is not None,
+        f"system_message default missing for openai: {enriched}",
+    )
+
+
+def test_apply_void_enrichment_preserves_existing_caps() -> None:
+    """Existing capability flags must not be overwritten by Void enrichment."""
+    caps = {
+        "tool_format": "custom",
+        "system_message": "custom-system",
+    }
+    enriched = apply_void_enrichment("openai", "gpt-test", caps)
+    assert_true(
+        enriched.get("tool_format") == "custom",
+        f"existing tool_format should win over defaults: {enriched}",
+    )
+    assert_true(
+        enriched.get("system_message") == "custom-system",
+        f"existing system_message should win over defaults: {enriched}",
+    )

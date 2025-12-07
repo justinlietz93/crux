@@ -18,6 +18,7 @@ from .core import (
     should_attempt,
 )
 from .observed import load_observed, record_observation
+from .void_profile import apply_void_enrichment
 
 __all__ = [
     # constants
@@ -37,4 +38,6 @@ __all__ = [
     # observed persistence
     "load_observed",
     "record_observation",
+    # Void-oriented enrichment
+    "apply_void_enrichment",
 ]

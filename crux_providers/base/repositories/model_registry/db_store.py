@@ -65,4 +65,23 @@ def save_snapshot_to_db(
         )
 
 
-__all__ = ["load_snapshot_from_db", "save_snapshot_to_db"]
+def list_providers_from_db() -> List[Dict[str, Any]]:
+    """Return provider rows from SQLite if available.
+
+    Each entry has at least ``provider``, ``metadata``, and ``model_count`` keys.
+    """
+    if svcdb is None:
+        return []
+    with contextlib.suppress(Exception):
+        svcdb.ensure_initialized()
+        rows = svcdb.list_model_providers()
+        if isinstance(rows, list):
+            out: List[Dict[str, Any]] = []
+            for item in rows:
+                if isinstance(item, dict) and item.get("provider"):
+                    out.append(item)
+            return out
+    return []
+
+
+__all__ = ["load_snapshot_from_db", "save_snapshot_to_db", "list_providers_from_db"]

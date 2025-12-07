@@ -1,0 +1,156 @@
+provider: anthropic
+display_name: Anthropic
+aliases:
+  - anthropic
+
+metadata:
+  tier: production
+
+models:
+  - id: claude-3-7-sonnet-20250219
+    name: Claude 3.7 Sonnet (2025-02-19)
+    family: claude-3-7
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: true
+        can_io_reasoning: true
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 15.0
+        cache_read_per_1k_tokens_usd: 0.3
+        cache_write_per_1k_tokens_usd: 3.75
+
+  - id: claude-opus-4-20250514
+    name: Claude Opus 4 (2025-05-14)
+    family: claude-4-opus
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: true
+        can_io_reasoning: true
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 15.0
+        output_per_1k_tokens_usd: 30.0
+        cache_read_per_1k_tokens_usd: 1.5
+        cache_write_per_1k_tokens_usd: 18.75
+
+  - id: claude-sonnet-4-20250514
+    name: Claude Sonnet 4 (2025-05-14)
+    family: claude-4-sonnet
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: true
+        can_io_reasoning: true
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 6.0
+        cache_read_per_1k_tokens_usd: 0.3
+        cache_write_per_1k_tokens_usd: 3.75
+
+  - id: claude-3-5-sonnet-20241022
+    name: Claude 3.5 Sonnet (2024-10-22)
+    family: claude-3.5-sonnet
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 15.0
+        cache_read_per_1k_tokens_usd: 0.3
+        cache_write_per_1k_tokens_usd: 3.75
+
+  - id: claude-3-5-haiku-20241022
+    name: Claude 3.5 Haiku (2024-10-22)
+    family: claude-3.5-haiku
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.8
+        output_per_1k_tokens_usd: 4.0
+        cache_read_per_1k_tokens_usd: 0.08
+        cache_write_per_1k_tokens_usd: 1.0
+
+  - id: claude-3-opus-20240229
+    name: Claude 3 Opus (2024-02-29)
+    family: claude-3-opus
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 4096
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 15.0
+        output_per_1k_tokens_usd: 75.0
+        cache_read_per_1k_tokens_usd: 1.5
+        cache_write_per_1k_tokens_usd: 18.75
+
+  - id: claude-3-sonnet-20240229
+    name: Claude 3 Sonnet (2024-02-29)
+    family: claude-3-sonnet
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: 4096
+      system_message: separated
+      tool_format: anthropic
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 15.0

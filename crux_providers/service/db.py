@@ -395,16 +395,24 @@ with contextlib.suppress(Exception):  # pragma: no cover - optional dependency
     from crux_providers.persistence.sqlite.model_registry_store import (  # type: ignore
         save_models_snapshot,
         load_models_snapshot,
+        list_providers as _list_model_providers,
     )
     # Re-export to preserve backward compatibility for existing imports.
     globals()["save_models_snapshot"] = save_models_snapshot
     globals()["load_models_snapshot"] = load_models_snapshot
+    globals()["list_model_providers"] = _list_model_providers
     # Help type checkers understand these are part of the module API.
     _existing_all = globals().get("__all__")
     if isinstance(_existing_all, list):
-        _existing_all.extend(["save_models_snapshot", "load_models_snapshot"])  # type: ignore[misc]
+        _existing_all.extend(
+            ["save_models_snapshot", "load_models_snapshot", "list_model_providers"]
+        )  # type: ignore[misc]
     else:
-        globals()["__all__"] = ["save_models_snapshot", "load_models_snapshot"]
+        globals()["__all__"] = [
+            "save_models_snapshot",
+            "load_models_snapshot",
+            "list_model_providers",
+        ]
 
 
 # Ensure the global SQLite connection is closed upon interpreter exit to avoid

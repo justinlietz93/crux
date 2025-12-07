@@ -1,0 +1,77 @@
+provider: groq
+display_name: Groq
+aliases:
+  - groq
+
+metadata:
+  tier: production
+
+models:
+  - id: llama-3.3-70b-versatile
+    name: Llama 3.3 70B Versatile
+    family: llama-3.3-70b
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: 32768
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.59
+        output_per_1k_tokens_usd: 0.79
+
+  - id: llama-3.1-8b-instant
+    name: Llama 3.1 8B Instant
+    family: llama-3.1-8b
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.05
+        output_per_1k_tokens_usd: 0.08
+
+  - id: qwen-2.5-coder-32b
+    name: Qwen 2.5 Coder 32B
+    family: qwen-2.5-coder
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.79
+        output_per_1k_tokens_usd: 0.79
+
+  - id: qwen-qwq-32b
+    name: Qwen QwQ 32B
+    family: qwq-32b
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.29
+        output_per_1k_tokens_usd: 0.39

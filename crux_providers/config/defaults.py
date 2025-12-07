@@ -77,6 +77,21 @@ OLLAMA_DEFAULT_MODEL = "gpt-oss:20b"
 OLLAMA_DEFAULT_HOST = "http://localhost:11434"
 
 
+# ---- Void capability profile defaults ----
+# Centralized string identifiers used by Void-oriented capability enrichment
+# helpers (see
+# [`void_profile.apply_void_enrichment()`](crux/crux_providers/base/capabilities/void_profile.py:1)).
+VOID_TOOL_FORMAT_OPENAI = "openai"
+VOID_TOOL_FORMAT_ANTHROPIC = "anthropic"
+VOID_TOOL_FORMAT_GEMINI = "gemini"
+VOID_TOOL_FORMAT_NONE = "none"
+
+VOID_SYSTEM_MESSAGE_DEVELOPER_ROLE = "developer-role"
+VOID_SYSTEM_MESSAGE_SYSTEM_ROLE = "system-role"
+VOID_SYSTEM_MESSAGE_SEPARATED = "separated"
+VOID_SYSTEM_MESSAGE_NONE = "none"
+
+
 # ---- SQLite config (infrastructure) ----
 # Standard busy timeout to mitigate lock contention (milliseconds).
 SQLITE_BUSY_TIMEOUT_MS = 5000
@@ -107,6 +122,15 @@ __all__ = [
     "XAI_DEFAULT_BASE_URL",
     "OLLAMA_DEFAULT_MODEL",
     "OLLAMA_DEFAULT_HOST",
+    # Void capability profile defaults
+    "VOID_TOOL_FORMAT_OPENAI",
+    "VOID_TOOL_FORMAT_ANTHROPIC",
+    "VOID_TOOL_FORMAT_GEMINI",
+    "VOID_TOOL_FORMAT_NONE",
+    "VOID_SYSTEM_MESSAGE_DEVELOPER_ROLE",
+    "VOID_SYSTEM_MESSAGE_SYSTEM_ROLE",
+    "VOID_SYSTEM_MESSAGE_SEPARATED",
+    "VOID_SYSTEM_MESSAGE_NONE",
     # SQLite
     "SQLITE_BUSY_TIMEOUT_MS",
     "SQLITE_JOURNAL_MODE",

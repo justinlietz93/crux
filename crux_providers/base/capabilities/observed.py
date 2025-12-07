@@ -34,7 +34,7 @@ def _now_iso() -> str:
     """
     return datetime.now(timezone.utc).isoformat()
 
-
+# TODO: This is unused, do something about it
 def _atomic_write(_: object, __: Dict[str, Any]) -> None:
     """Legacy no-op to preserve import compatibility with older modules."""
     return

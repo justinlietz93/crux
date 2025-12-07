@@ -13,8 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ....models import ModelInfo, ModelRegistrySnapshot
 from .. import db_store, parsing, refreshers
-from ....capabilities import merge_capabilities
-from ....capabilities import load_observed
+from ....capabilities import merge_capabilities, load_observed, apply_void_enrichment
 from .model_registry_error import ModelRegistryError
 
 
@@ -50,6 +49,7 @@ class ModelRegistryRepository:
         db_snap = self._snapshot_from_db(provider)
         if db_snap is not None:
             self._apply_observed(provider, db_snap.models)
+            self._apply_void_profile(provider, db_snap.models)
             return db_snap
         # DB-first policy: if no snapshot is found in SQLite, return an empty snapshot.
         # Callers that desire population should pass refresh=True.
@@ -61,6 +61,47 @@ class ModelRegistryRepository:
             metadata={},
         )
 
+    def list_providers(self) -> List[Dict[str, Any]]:
+        """Return normalized provider descriptors from the registry.
+
+        Each descriptor includes:
+
+        - ``id``: Provider key.
+        - ``display_name``: Human-friendly name (defaults to the provider id).
+        - ``aliases``: List of alias strings.
+        - ``model_count``: Number of models recorded for this provider.
+        - ``enabled``: Optional enabled flag from metadata (defaults to True).
+        - ``metadata``: Raw metadata mapping from the registry.
+        """
+        rows = db_store.list_providers_from_db() or []
+        providers: List[Dict[str, Any]] = []
+        for row in rows:
+            provider = row.get("provider")
+            if not provider:
+                continue
+            metadata = row.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {"raw": metadata}
+            display_name = metadata.get("display_name") or provider
+            aliases_raw = metadata.get("aliases")
+            aliases = aliases_raw if isinstance(aliases_raw, list) else []
+            try:
+                model_count = int(row.get("model_count") or 0)
+            except Exception:  # pragma: no cover - defensive
+                model_count = 0
+            enabled = bool(metadata.get("enabled", True))
+            providers.append(
+                {
+                    "id": provider,
+                    "display_name": display_name,
+                    "aliases": aliases,
+                    "model_count": model_count,
+                    "enabled": enabled,
+                    "metadata": metadata,
+                }
+            )
+        return providers
+
     def _apply_observed(self, provider: str, models: List[ModelInfo]) -> None:
         """Merge observed capability flags into each model's capabilities."""
         observed = load_observed(provider, self.providers_root)
@@ -70,6 +111,17 @@ class ModelRegistryRepository:
             caps_old = getattr(m, "capabilities", {}) or {}
             if caps_obs := observed.get(m.id) or {}:
                 m.capabilities = merge_capabilities(caps_old, caps_obs)
+
+    def _apply_void_profile(self, provider: str, models: List[ModelInfo]) -> None:
+        """Apply Void-oriented capability enrichment to model capabilities.
+
+        This uses :func:`apply_void_enrichment` to fill in missing high-level
+        fields such as ``tool_format`` and ``system_message`` in a
+        non-destructive way (existing capability keys always win).
+        """
+        for m in models or []:
+            caps_old = getattr(m, "capabilities", {}) or {}
+            m.capabilities = apply_void_enrichment(provider, m.id, caps_old)
 
     def save_snapshot(self, snapshot: ModelRegistrySnapshot) -> None:
         """Persist the given snapshot to SQLite only (DB-first policy).

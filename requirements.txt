@@ -12,3 +12,5 @@ pytest-cov
 fastapi
 uvicorn
 pydantic>=2.7,<3
+
+pyyaml

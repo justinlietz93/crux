@@ -1,0 +1,286 @@
+provider: openrouter
+display_name: OpenRouter
+aliases:
+  - openrouter
+
+metadata:
+  tier: production
+
+models:
+  - id: "qwen/qwen3-235b-a22b"
+    name: Qwen3 235B A22B
+    family: qwen3
+    context_length: 40960
+    capabilities:
+      context_window: 40960
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+      pricing:
+        input_per_1k_tokens_usd: 0.10
+        output_per_1k_tokens_usd: 0.10
+
+  - id: "microsoft/phi-4-reasoning-plus:free"
+    name: Phi-4 Reasoning Plus (free)
+    family: phi-4
+    context_length: 32768
+    capabilities:
+      context_window: 32768
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: "mistralai/mistral-small-3.1-24b-instruct:free"
+    name: Mistral Small 3.1 24B Instruct (free)
+    family: mistral-small-3.1-24b
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: "google/gemini-2.0-flash-lite-preview-02-05:free"
+    name: Gemini 2.0 Flash Lite (preview 02-05, free)
+    family: gemini-2.0-flash-lite
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: "google/gemini-2.0-pro-exp-02-05:free"
+    name: Gemini 2.0 Pro (exp 02-05, free)
+    family: gemini-2.0-pro
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: "google/gemini-2.0-flash-exp:free"
+    name: Gemini 2.0 Flash (exp, free)
+    family: gemini-2.0-flash
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: "deepseek/deepseek-r1"
+    name: DeepSeek R1 (via OpenRouter)
+    family: deepseek-r1
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: none
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.8
+        output_per_1k_tokens_usd: 2.4
+
+  - id: "anthropic/claude-opus-4"
+    name: Claude Opus 4 (via OpenRouter)
+    family: claude-opus-4
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 15.0
+        output_per_1k_tokens_usd: 75.0
+
+  - id: "anthropic/claude-sonnet-4"
+    name: Claude Sonnet 4 (via OpenRouter)
+    family: claude-sonnet-4
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 15.0
+        output_per_1k_tokens_usd: 75.0
+
+  - id: "anthropic/claude-3.7-sonnet:thinking"
+    name: Claude 3.7 Sonnet (thinking, via OpenRouter)
+    family: claude-3.7-sonnet
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 15.0
+
+  - id: "anthropic/claude-3.7-sonnet"
+    name: Claude 3.7 Sonnet (via OpenRouter)
+    family: claude-3.7-sonnet
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 15.0
+
+  - id: "anthropic/claude-3.5-sonnet"
+    name: Claude 3.5 Sonnet (via OpenRouter)
+    family: claude-3.5-sonnet
+    context_length: 200000
+    capabilities:
+      context_window: 200000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 3.0
+        output_per_1k_tokens_usd: 15.0
+
+  - id: "mistralai/codestral-2501"
+    name: Codestral 2501 (via OpenRouter)
+    family: codestral
+    context_length: 256000
+    capabilities:
+      context_window: 256000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.3
+        output_per_1k_tokens_usd: 0.9
+
+  - id: "mistralai/devstral-small:free"
+    name: Devstral Small (free, via OpenRouter)
+    family: devstral-small
+    context_length: 130000
+    capabilities:
+      context_window: 130000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: "qwen/qwen-2.5-coder-32b-instruct"
+    name: Qwen 2.5 Coder 32B Instruct (via OpenRouter)
+    family: qwen-2.5-coder
+    context_length: 33000
+    capabilities:
+      context_window: 33000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.07
+        output_per_1k_tokens_usd: 0.16
+
+  - id: "qwen/qwq-32b"
+    name: QwQ 32B (via OpenRouter)
+    family: qwq-32b
+    context_length: 33000
+    capabilities:
+      context_window: 33000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: true
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.07
+        output_per_1k_tokens_usd: 0.16

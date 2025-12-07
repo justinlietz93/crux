@@ -1,0 +1,176 @@
+provider: gemini
+display_name: Google Gemini
+aliases:
+  - gemini
+
+metadata:
+  tier: production
+
+models:
+  - id: gemini-2.5-pro-preview-05-06
+    name: Gemini 2.5 Pro (preview 05-06)
+    family: gemini-2.5-pro
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: true
+        can_io_reasoning: false
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: gemini-2.0-flash-lite
+    name: Gemini 2.0 Flash Lite
+    family: gemini-2.0-flash-lite
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: gemini-2.5-flash-preview-04-17
+    name: Gemini 2.5 Flash (preview 04-17)
+    family: gemini-2.5-flash
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: true
+        can_io_reasoning: false
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 0.15
+        output_per_1k_tokens_usd: 0.6
+
+  - id: gemini-2.5-pro-exp-03-25
+    name: Gemini 2.5 Pro (exp 03-25)
+    family: gemini-2.5-pro
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: true
+        can_io_reasoning: false
+        reserved_output_token_space: 8192
+        slider:
+          type: budget
+          min: 1024
+          max: 8192
+          default: 1024
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+
+  - id: gemini-2.0-flash
+    name: Gemini 2.0 Flash
+    family: gemini-2.0-flash
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.10
+        output_per_1k_tokens_usd: 0.40
+
+  - id: gemini-2.0-flash-lite-preview-02-05
+    name: Gemini 2.0 Flash Lite (preview 02-05)
+    family: gemini-2.0-flash-lite
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.075
+        output_per_1k_tokens_usd: 0.30
+
+  - id: gemini-1.5-flash
+    name: Gemini 1.5 Flash
+    family: gemini-1.5-flash
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.075
+        output_per_1k_tokens_usd: 0.30
+
+  - id: gemini-1.5-pro
+    name: Gemini 1.5 Pro
+    family: gemini-1.5-pro
+    context_length: 2097152
+    capabilities:
+      context_window: 2097152
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 1.25
+        output_per_1k_tokens_usd: 5.0
+
+  - id: gemini-1.5-flash-8b
+    name: Gemini 1.5 Flash 8B
+    family: gemini-1.5-flash-8b
+    context_length: 1048576
+    capabilities:
+      context_window: 1048576
+      reserved_output_token_space: 8192
+      system_message: separated
+      tool_format: gemini
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0375
+        output_per_1k_tokens_usd: 0.15

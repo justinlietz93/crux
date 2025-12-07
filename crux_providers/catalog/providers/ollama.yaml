@@ -1,0 +1,162 @@
+provider: ollama
+display_name: Ollama
+aliases:
+  - ollama
+
+metadata:
+  tier: production
+
+models:
+  - id: "qwen2.5-coder:7b"
+    name: Qwen 2.5 Coder 7B
+    family: qwen2.5-coder
+    context_length: 32000
+    capabilities:
+      context_window: 32000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 1.9
+
+  - id: "qwen2.5-coder:3b"
+    name: Qwen 2.5 Coder 3B
+    family: qwen2.5-coder
+    context_length: 32000
+    capabilities:
+      context_window: 32000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 1.9
+
+  - id: "qwen2.5-coder:1.5b"
+    name: Qwen 2.5 Coder 1.5B
+    family: qwen2.5-coder
+    context_length: 32000
+    capabilities:
+      context_window: 32000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: true
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 0.986
+
+  - id: "llama3.1"
+    name: Llama 3.1
+    family: llama3.1
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 4.9
+
+  - id: "qwen2.5-coder"
+    name: Qwen 2.5 Coder (generic)
+    family: qwen2.5-coder
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 4.7
+
+  - id: "qwq"
+    name: QwQ
+    family: qwq
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: 32000
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: false
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 20
+
+  - id: "deepseek-r1"
+    name: DeepSeek R1 (Ollama)
+    family: deepseek-r1
+    context_length: 128000
+    capabilities:
+      context_window: 128000
+      reserved_output_token_space: null
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: true
+        can_turn_off_reasoning: false
+        can_io_reasoning: false
+        open_source_think_tags:
+          - "<think>"
+          - "</think>"
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 4.7
+
+  - id: "devstral:latest"
+    name: Devstral (latest, Ollama)
+    family: devstral
+    context_length: 131000
+    capabilities:
+      context_window: 131000
+      reserved_output_token_space: 8192
+      system_message: system-role
+      tool_format: openai
+      fim: false
+      reasoning:
+        supports_reasoning: false
+      pricing:
+        input_per_1k_tokens_usd: 0.0
+        output_per_1k_tokens_usd: 0.0
+      metadata:
+        downloadable_size_gb: 14

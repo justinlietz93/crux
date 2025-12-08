@@ -3,32 +3,27 @@ from __future__ import annotations
 import json
 import os
 from contextlib import suppress
-from typing import Any, Dict, List, Optional, Iterator
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ValidationError
 
-from crux_providers.base.factory import (
-    ProviderFactory,
-    UnknownProviderError,
-)
-from crux_providers.base.interfaces_parts.supports_streaming import SupportsStreaming
-from crux_providers.persistence.sqlite import get_uow
 from crux_providers.persistence.sqlite.engine import create_connection, init_schema
 from crux_providers.persistence.interfaces.repos import IUnitOfWork
-from crux_providers.service.helpers import (
-    build_chat_request,
-    chat_with_metrics,
-    mask_keys_env,
-    set_env_for_provider,
+from crux_providers.config.defaults import PROVIDER_SERVICE_CORS_DEFAULT_ORIGINS
+
+from .app_parts.app_core import (
+    ChatBody,
+    KeysBody,
+    PrefsBody,
+    ModelsQuery,
+    get_uow_dep,
+    _build_env_to_provider_map,
+    _build_models_response,
+    _build_providers_response,
+    _handle_chat,
 )
-from crux_providers.base.dto import ChatRequestDTO, MessageDTO
-from crux_providers.config.defaults import (
-    PROVIDER_SERVICE_CORS_DEFAULT_ORIGINS,
-)
-from crux_providers.config.env import ENV_ALIASES, ENV_MAP
+
 
 VAULT_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "key_vault"))
 DB_PATH = os.path.join(VAULT_DIR, "providers.db")
@@ -42,56 +37,6 @@ with suppress(Exception):
         init_schema(conn)
     finally:
         conn.close()
-
-
-class ChatMessageDTO(BaseModel):
-    """Represents a single chat message with a role and content.
-
-    Used to encapsulate the role (e.g., user, assistant) and the message content for chat interactions.
-    """
-    role: str
-    content: Any
-
-
-class ChatBody(BaseModel):
-    """Represents the body of a chat request containing provider, model, and message details.
-
-    Encapsulates all parameters required to initiate a chat, including optional settings and extra data.
-    """
-    provider: str
-    model: str
-    messages: List[ChatMessageDTO]
-    max_tokens: Optional[int] = None
-    temperature: Optional[float] = None
-    response_format: Optional[str] = None
-    json_schema: Optional[Dict[str, Any]] = None
-    tools: Optional[List[Dict[str, Any]]] = None
-    extra: Dict[str, Any] = {}
-
-
-class KeysBody(BaseModel):
-    """Represents a request body containing API keys for various providers.
-
-    Used to receive and validate a mapping of provider environment variable names to their API keys.
-    """
-    keys: Dict[str, str]
-
-
-class PrefsBody(BaseModel):
-    """Represents a request body containing user or system preferences.
-
-    Used to receive and validate a mapping of preference keys to their values.
-    """
-    prefs: Dict[str, Any]
-
-
-class ModelsQuery(BaseModel):
-    """Represents a query for available models from a provider.
-
-    Used to specify the provider and whether to refresh the model list.
-    """
-    provider: str
-    refresh: Optional[bool] = False
 
 
 app = FastAPI(title="Provider Service", version="0.1.0")
@@ -108,7 +53,9 @@ def _seed_model_registry_from_catalog() -> None:
     """
     try:
         from . import model_catalog_loader
-        from crux_providers.base.repositories.model_registry.repository import ModelRegistryRepository
+        from crux_providers.base.repositories.model_registry.repository import (
+            ModelRegistryRepository,
+        )
     except Exception:
         # If the catalog loader or its dependencies are unavailable, skip seeding.
         return
@@ -117,196 +64,10 @@ def _seed_model_registry_from_catalog() -> None:
         model_catalog_loader.load_model_catalog(repository=repo)
 
 
-def get_uow_dep() -> IUnitOfWork:
-    """FastAPI dependency returning a UnitOfWork instance.
+# ---------------------------------------------------------------------------
+# CORS configuration
+# ---------------------------------------------------------------------------
 
-    This provides an abstraction layer so route handlers depend on the
-    `IUnitOfWork` protocol instead of concrete database helper functions.
-    Lifetime: a fresh UnitOfWork (and underlying connection) per request.
-    It uses the centralized SQLite helper; future enhancements may introduce
-    connection pooling or allow swapping the backend transparently via DI.
-    """
-    return get_uow()
-
-
-def _build_env_to_provider_map() -> Dict[str, str]:
-    """Create a mapping from environment variable names to provider names.
-
-    This combines canonical mappings from ``ENV_MAP`` with any alias names in
-    ``ENV_ALIASES`` so that incoming key payloads can reference either the
-    canonical or alias variable names. The result is used by ``post_keys`` to
-    normalize incoming keys to providers.
-
-    Returns
-    -------
-    Dict[str, str]
-        Mapping of environment variable name (e.g., ``OPENAI_API_KEY``) to
-        provider identifier (e.g., ``"openai"``).
-    """
-    env_to_provider: Dict[str, str] = {v: k for k, v in ENV_MAP.items()}
-    for prov, names in ENV_ALIASES.items():
-        for n in names:
-            env_to_provider.setdefault(n, prov)
-    return env_to_provider
-
-
-def _validate_body_as_dto(body: "ChatBody") -> ChatRequestDTO:
-    """Validate inbound chat body strictly into a DTO.
-
-    Converts the incoming ``ChatBody`` into a ``ChatRequestDTO`` performing
-    strict pydantic validation so downstream code can rely on consistent
-    shapes. Raises ``ValidationError`` on invalid input.
-
-    Parameters
-    ----------
-    body: ChatBody
-        The inbound request body.
-
-    Returns
-    -------
-    ChatRequestDTO
-        The validated DTO ready to be transformed into domain ``ChatRequest``.
-    """
-    return ChatRequestDTO(
-        model=body.model,
-        messages=[MessageDTO(role=m.role, content=m.content) for m in body.messages],
-        max_tokens=body.max_tokens,
-        temperature=body.temperature,
-        response_format=body.response_format,
-        json_schema=body.json_schema,
-        tools=body.tools,
-        extra=body.extra,
-    )
-
-
-def _create_adapter_or_raise(provider: str):
-    """Create a provider adapter or raise a 400 HTTP error.
-
-    Wraps ``ProviderFactory.create`` to convert an ``UnknownProviderError``
-    into a ``HTTPException(400)`` suitable for controller paths.
-
-    Parameters
-    ----------
-    provider: str
-        Provider identifier provided by the client.
-
-    Returns
-    -------
-    Any
-        The instantiated adapter implementation.
-
-    Raises
-    ------
-    HTTPException
-        With ``status_code=400`` if the provider isn't recognized.
-    """
-    try:
-        return ProviderFactory.create(provider)
-    except UnknownProviderError as e:  # pragma: no cover - thin wrapper
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-def _build_models_response(provider: str, refresh: bool) -> Dict[str, Any]:
-    """Return the models endpoint payload for a provider using the registry.
-
-    This implementation is DB-first and uses the model registry repository
-    as the single source of truth for model listings:
-
-    - If a YAML catalog or prior refresh has populated the registry, the
-      existing snapshot is returned directly.
-    - If ``refresh`` is True, the repository attempts a provider-specific
-      refresh before reading from SQLite.
-
-    Parameters
-    ----------
-    provider: str
-        Provider identifier from the request.
-    refresh: bool
-        Whether to trigger a refresh before loading from the registry.
-
-    Returns
-    -------
-    Dict[str, Any]
-        JSON-serializable response payload used by ``get_models``.
-    """
-    provider_norm = provider.lower().strip()
-    if not provider_norm:
-        raise HTTPException(status_code=400, detail="provider is required")
-    try:
-        from crux_providers.base.repositories.model_registry.repository import ModelRegistryRepository
-
-        repo = ModelRegistryRepository()
-        snapshot = repo.list_models(provider_norm, refresh=refresh)
-    except Exception as e:  # pragma: no cover - defensive
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    return {"ok": True, "snapshot": snapshot.to_dict()}
-
-
-def _build_providers_response() -> Dict[str, Any]:
-    """Return the providers endpoint payload using the model registry."""
-    try:
-        from crux_providers.base.repositories.model_registry.repository import ModelRegistryRepository
-    except Exception as e:  # pragma: no cover - defensive
-        raise HTTPException(
-            status_code=500, detail=f"Model registry unavailable: {e}"
-        ) from e
-    repo = ModelRegistryRepository()
-    try:
-        providers = repo.list_providers()
-    except Exception as e:  # pragma: no cover - defensive
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    return {"ok": True, "providers": providers}
-
-
-def _handle_chat(body: "ChatBody", uow: IUnitOfWork) -> Dict[str, Any]:
-    """Validate, prepare, and execute a chat request, returning a response payload.
-
-    This orchestrates the end-to-end chat flow for the ``post_chat`` route:
-    - Ensures provider SDKs receive API keys via environment (using DI/UoW)
-    - Resolves the provider adapter (converting unknown provider to HTTP 400)
-    - Strictly validates the body via DTO conversion (HTTP 400 on failure)
-    - Builds the domain request and invokes the adapter with metrics capture
-
-    Parameters
-    ----------
-    body: ChatBody
-        The inbound chat request body.
-    uow: IUnitOfWork
-        Unit-of-work dependency for key lookup and metrics persistence.
-
-    Returns
-    -------
-    Dict[str, Any]
-        A JSON-serializable payload with ``{"ok": True, "response": ...}`` on
-        success. On failure, raises appropriate ``HTTPException``.
-
-    Raises
-    ------
-    HTTPException
-        - 400 for validation errors or unknown providers.
-        - 500 for provider execution errors (with error details).
-    """
-    # Set env for SDKs if key is stored (DI-aware)
-    set_env_for_provider(body.provider, uow=uow)
-
-    # Adapter resolution (400 on unknown provider)
-    adapter = _create_adapter_or_raise(body.provider)
-
-    # Strict DTO validation before building domain request
-    try:
-        _ = _validate_body_as_dto(body)
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=e.errors()) from e
-
-    req = build_chat_request(body)
-    resp, err = chat_with_metrics(
-        adapter, req, provider=body.provider, model=body.model, uow=uow
-    )
-    if err:
-        raise HTTPException(status_code=500, detail=str(err)) from err
-    return {"ok": True, "response": resp.to_dict()}
-
-# Allow local dev origins; adjust as needed
 cors_origins_env = os.getenv(
     "PROVIDER_SERVICE_CORS_ORIGINS", PROVIDER_SERVICE_CORS_DEFAULT_ORIGINS
 )
@@ -318,6 +79,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ---------------------------------------------------------------------------
+# Metrics and health endpoints
+# ---------------------------------------------------------------------------
 
 
 @app.get("/api/metrics/summary")
@@ -338,25 +104,45 @@ def health() -> Dict[str, Any]:
     """Check the health status of the service.
 
     Returns a simple response indicating the service is running and healthy.
-
-    Returns:
-        Dict[str, Any]: A dictionary with an "ok" status set to True.
     """
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Providers and models endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/providers")
+def get_providers() -> Dict[str, Any]:
+    """List providers present in the model registry.
+
+    This is the canonical source for the IDE's provider list.
+    """
+    return _build_providers_response()
+
+
+@app.get("/api/models")
+def get_models(provider: str, refresh: bool = False) -> Dict[str, Any]:
+    """Retrieve a list of available models for a given provider.
+
+    Returns a snapshot of models if the provider supports model listing,
+    otherwise returns an error.
+    """
+    return _build_models_response(provider, refresh)
+
+
+# ---------------------------------------------------------------------------
+# Key management endpoints
+# ---------------------------------------------------------------------------
 
 
 @app.post("/api/keys")
 def post_keys(body: KeysBody, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
     """Store API keys for various providers from the request body.
 
-    Accepts a mapping of environment variable names to API keys and persists them for each provider.
-
-    Args:
-        body: The request body containing the keys to store.
-        uow: The unit of work for database operations.
-
-    Returns:
-        Dict[str, Any]: A dictionary indicating which keys were stored.
+    Accepts a mapping of environment variable names to API keys and persists
+    them for each provider.
     """
     # Accept env-var-style mapping for compatibility; store as provider->key
     stored: List[str] = []
@@ -391,14 +177,11 @@ def post_keys(body: KeysBody, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[s
 def get_keys(uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
     """Retrieve a masked mapping of API keys for all providers.
 
-    Returns a dictionary indicating which provider keys are set without exposing the actual key values.
-
-    Args:
-        uow: The unit of work for database operations.
-
-    Returns:
-        Dict[str, Any]: A dictionary with a masked mapping of provider keys.
+    Returns a dictionary indicating which provider keys are set without
+    exposing the actual key values.
     """
+    from crux_providers.service.helpers import mask_keys_env
+
     # Return env-var-style masked mapping (DI path)
     providers = uow.keys.list_providers()
     raw: Dict[str, str] = {}
@@ -427,18 +210,17 @@ def delete_key(provider: str, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[s
     return {"ok": True, "deleted": provider.lower()}
 
 
+# ---------------------------------------------------------------------------
+# Preferences endpoints
+# ---------------------------------------------------------------------------
+
+
 @app.post("/api/prefs")
 def post_prefs(body: PrefsBody, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
     """Update and store user or system preferences.
 
-    Merges the provided preferences with existing ones and persists the updated preferences.
-
-    Args:
-        body: The request body containing preferences to update.
-        uow: The unit of work for database operations.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the updated preferences.
+    Merges the provided preferences with existing ones and persists the
+    updated preferences.
     """
     existing = uow.prefs.get_prefs().values
     existing.update(body.prefs or {})
@@ -449,57 +231,34 @@ def post_prefs(body: PrefsBody, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict
 
 @app.get("/api/prefs")
 def get_prefs(uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
-    """Retrieve the current user or system preferences.
-
-    Returns a dictionary containing all stored preferences.
-
-    Args:
-        uow: The unit of work for database operations.
-
-    Returns:
-        Dict[str, Any]: A dictionary with the current preferences.
-    """
+    """Retrieve the current user or system preferences."""
     return {"ok": True, "prefs": uow.prefs.get_prefs().values}
 
 
-@app.get("/api/models")
-def get_models(provider: str, refresh: bool = False) -> Dict[str, Any]:
-    """Retrieve a list of available models for a given provider.
-
-    Returns a snapshot of models if the provider supports model listing, otherwise returns an error.
-
-    Args:
-        provider: The name of the provider to query.
-        refresh: Whether to refresh the model list.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the model snapshot or an error message.
-    """
-    return _build_models_response(provider, refresh)
+# ---------------------------------------------------------------------------
+# Chat endpoint
+# ---------------------------------------------------------------------------
 
 
 @app.post("/api/chat")
 def post_chat(body: ChatBody, uow: IUnitOfWork = Depends(get_uow_dep)) -> Dict[str, Any]:
     """Process a chat request and return the model's response.
 
-    Validates the request, sets up the provider environment, and returns the chat response or an error.
-
-    Args:
-        body: The chat request body containing provider, model, and messages.
-        uow: The unit of work for database operations.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the chat response or error details.
+    Validates the request, sets up the provider environment, and returns the
+    chat response or an error.
     """
     return _handle_chat(body, uow)
+
+
+# ---------------------------------------------------------------------------
+# Application factory
+# ---------------------------------------------------------------------------
 
 
 def get_app() -> FastAPI:
     """Return the FastAPI application instance.
 
-    Provides access to the configured FastAPI app for use in deployment or testing.
-
-    Returns:
-        FastAPI: The FastAPI application instance.
+    Provides access to the configured FastAPI app for use in deployment or
+    testing.
     """
     return app

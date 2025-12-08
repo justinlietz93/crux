@@ -26,23 +26,23 @@ for Void IDE and other thin clients, without introducing a second provider
 
 Current fields
 --------------
-
+ 
 The enrichment currently targets these keys inside ``ModelInfo.capabilities``:
-
+ 
 - ``tool_format: str``
-
+ 
   Describes how tools are passed to a provider:
-
+ 
   - ``"openai"``    – OpenAI-style ``tools=[...]`` + function calling.
   - ``"anthropic"`` – Anthropic tools / tool_choice semantics.
   - ``"gemini"``    – Gemini tools (function calling) semantics.
   - ``"none"``      – No native tool surface; callers should fall back to
                       prompt-embedded tools (e.g., XML).
-
+ 
 - ``system_message: str``
-
+ 
   Describes how system/developer instructions should be represented:
-
+ 
   - ``"developer-role"`` – Instructions supplied via a dedicated
     developer/assistant role or "instructions" field (OpenAI-style).
   - ``"system-role"``    – Instructions supplied as a regular "system" message
@@ -51,15 +51,29 @@ The enrichment currently targets these keys inside ``ModelInfo.capabilities``:
     (e.g., Anthropic ``system=...`` or Gemini ``system_instruction``).
   - ``"none"``           – No structured system channel; callers should inject
     instructions into the first user message or prompt prefix.
-
+ 
 - ``fim: bool``
-
+ 
   Baseline flag for **fill-in-the-middle** support. This is conservative and
   defaults to ``False``; future work may populate this from explicit provider
   metadata or observations.
-
+ 
+- ``tools_supported: bool``
+ 
+  Coarse, provider-level flag indicating whether the provider exposes a native
+  tool surface that Void can target. This is conservative and defaults to
+  ``True`` for providers that offer OpenAI/Anthropic/Gemini-style tools.
+  Callers may still consult finer-grained per-model capabilities or
+  observations when available.
+ 
+- ``max_tool_calls_per_turn: int | None``
+ 
+  Soft upper bound on how many tool invocations an orchestrator should attempt
+  in a single logical turn. ``None`` means "no explicit limit" (subject to the
+  orchestrator's own safety caps).
+ 
 These are intentionally minimal; they are sufficient for the IDE to:
-
+ 
 - Choose between OpenAI / Anthropic / Gemini tool payloads.
 - Decide how to encode system prompts per provider.
 - Gate FIM-related behaviors safely.
@@ -107,31 +121,47 @@ _PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_DEVELOPER_ROLE,
         "fim": False,
+        # OpenAI models expose native tool surfaces; callers may still consult
+        # finer-grained per-model caps when available.
+        "tools_supported": True,
+        # Soft orchestrator hint; the IDE will treat this as an upper bound for
+        # tool invocations per logical turn, not a hard provider limit.
+        "max_tool_calls_per_turn": 8,
     },
     "openrouter": {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_DEVELOPER_ROLE,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     "deepseek": {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_DEVELOPER_ROLE,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     "xai": {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_DEVELOPER_ROLE,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     "groq": {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_SYSTEM_ROLE,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     "mistral": {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_SYSTEM_ROLE,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     "ollama": {
         # Ollama presents a local OpenAI-ish surface in many setups, but a
@@ -140,18 +170,26 @@ _PROVIDER_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "tool_format": VOID_TOOL_FORMAT_OPENAI,
         "system_message": VOID_SYSTEM_MESSAGE_SYSTEM_ROLE,
         "fim": False,
+        # Coarse provider-level default: allow tools by default, with more
+        # cautious decisions made at per-model or observed-capability layers.
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     # Anthropic-style tools + separate system channel.
     "anthropic": {
         "tool_format": VOID_TOOL_FORMAT_ANTHROPIC,
         "system_message": VOID_SYSTEM_MESSAGE_SEPARATED,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
     # Gemini-style tools + explicit system_instruction channel.
     "gemini": {
         "tool_format": VOID_TOOL_FORMAT_GEMINI,
         "system_message": VOID_SYSTEM_MESSAGE_SEPARATED,
         "fim": False,
+        "tools_supported": True,
+        "max_tool_calls_per_turn": 8,
     },
 }
 
@@ -190,6 +228,8 @@ def apply_void_enrichment(provider: str, model_id: str, caps: Dict[str, Any] | N
       - ``tool_format`` is set when absent.
       - ``system_message`` is set when absent.
       - ``fim`` is set when absent.
+      - ``tools_supported`` is set when absent.
+      - ``max_tool_calls_per_turn`` is set when absent.
 
     Rationale
     ---------
@@ -217,8 +257,15 @@ def apply_void_enrichment(provider: str, model_id: str, caps: Dict[str, Any] | N
         # No Void-specific defaults for this provider; return mapping unchanged.
         return base
 
-    # Non-destructive merge: existing keys always win.
+    # Non-destructive merge: existing keys always win, with the exception that
+    # ``tools_supported`` and ``max_tool_calls_per_turn`` treat ``None`` as
+    # "missing" so that provider-level defaults can fill in sane values.
     for key, value in profile.items():
+        if key in ("tools_supported", "max_tool_calls_per_turn"):
+            existing = base.get(key, None)
+            if existing is None:
+                base[key] = value
+            continue
         base.setdefault(key, value)
 
     return base

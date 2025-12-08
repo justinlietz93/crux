@@ -145,3 +145,59 @@ def test_api_models_snapshots_are_well_formed_and_de_duplicated() -> None:
                     ), f"context_length for {provider!r} must be int or None, got {type(ctx)!r}"
     finally:
         tmpdir.cleanup()
+
+
+@pytest.mark.integration
+def test_api_models_include_void_tool_capability_flags() -> None:
+    """`/api/models` capabilities must expose coarse Void tool flags.
+
+    This asserts that the Void-specific tool capability fields used by the IDE –
+    ``tools_supported`` and ``max_tool_calls_per_turn`` – are present with sane
+    shapes for core catalog-backed providers.
+    """
+    tmpdir = _init_temp_db()
+    try:
+        load_model_catalog()
+
+        client = TestClient(get_app())
+
+        for provider in sorted(_CORE_PROVIDERS):
+            resp = client.get("/api/models", params={"provider": provider, "refresh": False})
+            assert (
+                resp.status_code == 200
+            ), f"Unexpected status for provider {provider!r}: {resp.status_code}"
+            payload = resp.json()
+            assert payload.get("ok") is True, f"Expected ok=True for provider {provider!r}"
+
+            snapshot: Dict[str, Any] = payload.get("snapshot") or {}
+            models: List[Dict[str, Any]] = snapshot.get("models") or []
+            assert (
+                models
+            ), f"Expected at least one model for provider {provider!r} when checking tool caps"
+
+            for m in models:
+                caps: Dict[str, Any] = m.get("capabilities") or {}
+                assert isinstance(
+                    caps, dict
+                ), f"Model capabilities for {provider!r} must be a dict, got {type(caps)!r}"
+
+                tools_supported = caps.get("tools_supported")
+                max_tool_calls_per_turn = caps.get("max_tool_calls_per_turn")
+
+                assert isinstance(
+                    tools_supported, bool
+                ), (
+                    f"`tools_supported` must be a bool for provider {provider!r}, "
+                    f"model {m.get('id')!r}: {tools_supported!r}"
+                )
+
+                if max_tool_calls_per_turn is not None:
+                    assert isinstance(
+                        max_tool_calls_per_turn, int
+                    ) and max_tool_calls_per_turn > 0, (
+                        "`max_tool_calls_per_turn` must be a positive int or None for "
+                        f"provider {provider!r}, model {m.get('id')!r}: "
+                        f"{max_tool_calls_per_turn!r}"
+                    )
+    finally:
+        tmpdir.cleanup()

@@ -43,8 +43,8 @@ from fastapi.responses import StreamingResponse
 from crux_providers.base.interfaces_parts.supports_streaming import SupportsStreaming
 from crux_providers.base.streaming import ChatStreamEvent
 from crux_providers.persistence.interfaces.repos import IUnitOfWork
-from crux_providers.service.app import (
-    app,
+from crux_providers.service.app import app
+from crux_providers.service.app_parts.app_core import (
     ChatBody,
     _create_adapter_or_raise,
     _validate_body_as_dto,

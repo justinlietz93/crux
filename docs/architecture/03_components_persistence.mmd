@@ -1,0 +1,105 @@
+%% C4 Component Diagram: Persistence Layer Container
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+graph TB
+    classDef interface fill:#08427b,stroke:#052e56,stroke-width:2px,color:#fff
+    classDef repository fill:#1168bd,stroke:#0b4884,stroke-width:2px,color:#fff
+    classDef schema fill:#438dd5,stroke:#2e5f8d,stroke-width:2px,color:#fff
+    classDef storage fill:#85bbf0,stroke:#5a8fc4,stroke-width:2px,color:#000
+
+    %% Repository Interfaces
+    subgraph INTERFACES [Repository Interfaces]
+        IMODELREG[IModelRegistryRepository<br/>Protocol<br/>--<br/>get_models, save_models,<br/>get_snapshot]:::interface
+        IKEYS[IKeysRepository<br/>Protocol<br/>--<br/>get_key, set_key,<br/>list_keys]:::interface
+        ICHATLOG[IChatLogRepository<br/>Protocol<br/>--<br/>log_chat, query_logs,<br/>get_by_id]:::interface
+        IMETRICS[IMetricsRepository<br/>Protocol<br/>--<br/>record_metrics, query,<br/>aggregate]:::interface
+        IPREFS[IPreferencesRepository<br/>Protocol<br/>--<br/>get_pref, set_pref,<br/>delete_pref]:::interface
+        ICAPS[ICapabilitiesStore<br/>Protocol<br/>--<br/>save_capabilities,<br/>get_capabilities]:::interface
+        IUOW[IUnitOfWork<br/>Protocol<br/>--<br/>begin, commit, rollback]:::interface
+    end
+
+    %% Repository Implementations
+    subgraph REPOS [SQLite Repository Implementations]
+        MODELREG[ModelRegistryStore<br/>SQLite Implementation<br/>--<br/>Table: model_registry]:::repository
+        KEYSTORE[KeystoreRepository<br/>SQLite Implementation<br/>--<br/>Table: keystore]:::repository
+        CHATLOG[ChatLogRepository<br/>SQLite Implementation<br/>--<br/>Table: chat_logs]:::repository
+        METRICS[MetricsRepository<br/>SQLite Implementation<br/>--<br/>Table: metrics]:::repository
+        PREFS[PreferencesRepository<br/>SQLite Implementation<br/>--<br/>Table: preferences]:::repository
+        CAPS[ObservedCapabilitiesStore<br/>SQLite Implementation<br/>--<br/>Table: observed_capabilities]:::repository
+    end
+
+    %% Schema & Migration
+    subgraph SCHEMA [Schema Management]
+        DBSCHEMA[db_schema<br/>Module<br/>--<br/>CREATE TABLE statements]:::schema
+        MIGRATOR[Migrator<br/>Component<br/>--<br/>Schema versioning,<br/>migration runner]:::schema
+        SEED[Seed Data<br/>Module<br/>--<br/>Initial defaults]:::schema
+        BACKFILL[Timestamp Backfill<br/>Script<br/>--<br/>ISO8601 UTC normalization]:::schema
+    end
+
+    %% Storage Engine
+    subgraph ENGINE_LAYER [Storage Engine]
+        ENGINE[SQLite Engine<br/>Component<br/>--<br/>Connection factory,<br/>thread-local pool]:::storage
+        CONFIG[SQLite Config<br/>Module<br/>--<br/>WAL mode, busy_timeout,<br/>PRAGMA settings]:::schema
+        CONN[(SQLite Database<br/>crux_providers.db<br/>--<br/>WAL journal, NORMAL sync)]:::storage
+    end
+
+    %% Unit of Work
+    UOW[UnitOfWork<br/>Transaction Coordinator<br/>--<br/>Transactional consistency]:::repository
+
+    %% Relationships - Interfaces to Implementations
+    IMODELREG -.->|implemented by| MODELREG
+    IKEYS -.->|implemented by| KEYSTORE
+    ICHATLOG -.->|implemented by| CHATLOG
+    IMETRICS -.->|implemented by| METRICS
+    IPREFS -.->|implemented by| PREFS
+    ICAPS -.->|implemented by| CAPS
+    IUOW -.->|implemented by| UOW
+
+    %% Repositories to Engine
+    MODELREG -->|executes SQL via| ENGINE
+    KEYSTORE -->|executes SQL via| ENGINE
+    CHATLOG -->|executes SQL via| ENGINE
+    METRICS -->|executes SQL via| ENGINE
+    PREFS -->|executes SQL via| ENGINE
+    CAPS -->|executes SQL via| ENGINE
+    UOW -->|manages transactions in| ENGINE
+
+    %% Engine to Storage
+    ENGINE -->|connects to| CONN
+    ENGINE -->|applies| CONFIG
+
+    %% Schema Management
+    MIGRATOR -->|creates tables from| DBSCHEMA
+    MIGRATOR -->|initializes with| SEED
+    MIGRATOR -->|runs via| ENGINE
+    BACKFILL -->|updates via| ENGINE
+
+    %% Storage Schema
+    subgraph DB_TABLES [Database Tables]
+        T_MODELREG[model_registry<br/>--<br/>provider, model_id, name,<br/>capabilities, created_at]:::schema
+        T_KEYSTORE[keystore<br/>--<br/>provider, key_value,<br/>created_at, updated_at]:::schema
+        T_CHATLOG[chat_logs<br/>--<br/>id, provider, model,<br/>request, response, created_at]:::schema
+        T_METRICS[metrics<br/>--<br/>provider, operation, latency,<br/>ttft, tokens, created_at]:::schema
+        T_PREFS[preferences<br/>--<br/>key, value, updated_at]:::schema
+        T_CAPS[observed_capabilities<br/>--<br/>provider, model, capability,<br/>observed_at]:::schema
+    end
+
+    %% Table Relationships
+    CONN -->|contains| T_MODELREG
+    CONN -->|contains| T_KEYSTORE
+    CONN -->|contains| T_CHATLOG
+    CONN -->|contains| T_METRICS
+    CONN -->|contains| T_PREFS
+    CONN -->|contains| T_CAPS
+
+    MODELREG -.->|reads/writes| T_MODELREG
+    KEYSTORE -.->|reads/writes| T_KEYSTORE
+    CHATLOG -.->|reads/writes| T_CHATLOG
+    METRICS -.->|reads/writes| T_METRICS
+    PREFS -.->|reads/writes| T_PREFS
+    CAPS -.->|reads/writes| T_CAPS
+
+    %% Notes
+    note1[Key Patterns:<br/>- Repository pattern with<br/>  interface segregation<br/>- Unit of Work for transactions<br/>- WAL mode for concurrency<br/>- Thread-local connections<br/>- Schema migrations via Migrator<br/>- ISO8601 UTC timestamps<br/>- No ORM (direct SQL)]

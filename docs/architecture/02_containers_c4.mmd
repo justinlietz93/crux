@@ -1,0 +1,94 @@
+%% C4 Container Diagram: Crux Providers Internal Architecture
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+graph TB
+    classDef user fill:#08427b,stroke:#052e56,stroke-width:2px,color:#fff
+    classDef container fill:#1168bd,stroke:#0b4884,stroke-width:2px,color:#fff
+    classDef provider fill:#438dd5,stroke:#2e5f8d,stroke-width:2px,color:#fff
+    classDef storage fill:#85bbf0,stroke:#5a8fc4,stroke-width:2px,color:#000
+    classDef infra fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
+
+    %% Users
+    SDK[SDK Consumer]:::user
+    CLI[CLI User]:::user
+    API[API Client]:::user
+
+    %% Containers
+    subgraph CRUX [Crux Providers System]
+        %% Entry Points
+        FACTORY[Provider Factory<br/>ProviderFactory<br/>--<br/>Lazy adapter instantiation]:::container
+        SERVICE[Service Layer<br/>FastAPI App<br/>--<br/>HTTP API, benchmark]:::container
+        CLIMOD[CLI Module<br/>argparse<br/>--<br/>Interactive shell, batch ops]:::container
+
+        %% Core Abstractions
+        BASE[Base Abstractions<br/>Interfaces & DTOs<br/>--<br/>LLMProvider, ChatRequest/Response<br/>Streaming contracts]:::container
+
+        %% Provider Adapters (Hexagonal Ports)
+        subgraph ADAPTERS [Provider Adapters]
+            OAI[OpenAI Adapter<br/>OpenAIProvider<br/>--<br/>GPT models]:::provider
+            ANT[Anthropic Adapter<br/>AnthropicProvider<br/>--<br/>Claude models]:::provider
+            GEM[Gemini Adapter<br/>GeminiProvider<br/>--<br/>Gemini models]:::provider
+            OLL[Ollama Adapter<br/>OllamaProvider<br/>--<br/>Local models]:::provider
+            ORT[OpenRouter Adapter<br/>OpenRouterProvider<br/>--<br/>Multi-provider]:::provider
+            DSK[Deepseek Adapter<br/>DeepseekProvider<br/>--<br/>Deepseek models]:::provider
+            XAI[xAI Adapter<br/>XAIProvider<br/>--<br/>Grok models]:::provider
+        end
+
+        %% Infrastructure
+        RESILIENCE[Resilience Layer<br/>Timeouts, Retries, Cancellation<br/>--<br/>operation_timeout, RetryConfig]:::infra
+        HTTP[HTTP Client Pool<br/>requests, connection pooling<br/>--<br/>Shared across adapters]:::infra
+        STREAM[Streaming Subsystem<br/>BaseStreamingAdapter<br/>--<br/>Delta aggregation, metrics]:::infra
+
+        %% Persistence
+        subgraph PERSISTENCE [Persistence Layer]
+            REPOS[Repository Implementations<br/>SQLite-backed<br/>--<br/>Model Registry, Chat Logs,<br/>Metrics, Key Vault, Prefs]:::storage
+            ENGINE[SQLite Engine<br/>WAL mode, connection pooling<br/>--<br/>Busy timeout: 5s]:::storage
+        end
+
+        %% Configuration
+        CONFIG[Configuration Layer<br/>Env var mapping, defaults<br/>--<br/>Provider governance]:::infra
+    end
+
+    %% External Systems
+    PROVIDERS[LLM Provider APIs<br/>7 external services]:::user
+    SQLITE[(SQLite Database<br/>crux_providers.db)]:::storage
+    LOGS[Structured Logs<br/>JSON formatter]:::storage
+
+    %% Relationships - Entry Points
+    SDK -->|"create(provider)"| FACTORY
+    API -->|"POST /v1/chat"| SERVICE
+    CLI -->|"chat/models/bench"| CLIMOD
+
+    %% Factory to Adapters
+    FACTORY -->|instantiates| ADAPTERS
+    SERVICE -->|uses| FACTORY
+    CLIMOD -->|uses| FACTORY
+
+    %% Adapters to Base
+    ADAPTERS -.->|implement interfaces| BASE
+    ADAPTERS -->|use DTOs| BASE
+
+    %% Adapters to Infrastructure
+    ADAPTERS -->|HTTP calls via| HTTP
+    ADAPTERS -->|timeout/retry via| RESILIENCE
+    ADAPTERS -->|streaming via| STREAM
+
+    %% Infrastructure to External
+    HTTP -->|requests| PROVIDERS
+    STREAM -->|emit metrics| LOGS
+
+    %% Persistence
+    REPOS -->|read/write| ENGINE
+    ENGINE -->|persist| SQLITE
+    FACTORY -->|reads keys from| REPOS
+    SERVICE -->|logs to| REPOS
+    CLIMOD -->|queries| REPOS
+
+    %% Configuration
+    CONFIG -.->|provides defaults to| ADAPTERS
+    CONFIG -.->|env mapping for| REPOS
+
+    %% Notes
+    note1[Key Patterns:<br/>- Factory: Lazy adapter creation<br/>- Repository: Data access abstraction<br/>- Strategy: Streaming via adapters<br/>- Decorator: Timeout/retry wrappers<br/>- Pool: Shared HTTP connections]

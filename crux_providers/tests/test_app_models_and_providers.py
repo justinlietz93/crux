@@ -201,3 +201,86 @@ def test_api_models_include_void_tool_capability_flags() -> None:
                     )
     finally:
         tmpdir.cleanup()
+
+
+@pytest.mark.integration
+def test_api_models_include_void_profile_capability_fields() -> None:
+    """`/api/models` capabilities must expose Void profile fields for core providers.
+
+    This asserts that the provider-level Void capability enrichment applied by
+    ``apply_void_enrichment`` is visible on the HTTP surface for all
+    catalog-backed providers used by the IDE.
+
+    Specifically, for each model we expect:
+
+    - ``tool_format`` in {``"openai"``, ``"anthropic"``, ``"gemini"``, ``"none"``}.
+    - ``system_message`` in {``"developer-role"``, ``"system-role"``, ``"separated"``, ``"none"``}.
+    - ``fim`` is a bool.
+    """
+    tmpdir = _init_temp_db()
+    try:
+        load_model_catalog()
+
+        client = TestClient(get_app())
+
+        for provider in sorted(_CORE_PROVIDERS):
+            resp = client.get("/api/models", params={"provider": provider, "refresh": False})
+            assert (
+                resp.status_code == 200
+            ), f"Unexpected status for provider {provider!r}: {resp.status_code}"
+            payload = resp.json()
+            assert payload.get("ok") is True, f"Expected ok=True for provider {provider!r}"
+
+            snapshot: Dict[str, Any] = payload.get("snapshot") or {}
+            models: List[Dict[str, Any]] = snapshot.get("models") or []
+            assert models, (
+                f"Expected at least one model for provider {provider!r} "
+                "when checking Void profile capability fields"
+            )
+
+            for m in models:
+                caps: Dict[str, Any] = m.get("capabilities") or {}
+                assert isinstance(
+                    caps, dict
+                ), f"Model capabilities for {provider!r} must be a dict, got {type(caps)!r}"
+
+                tool_format = caps.get("tool_format")
+                system_message = caps.get("system_message")
+                fim = caps.get("fim")
+
+                assert isinstance(
+                    tool_format, str
+                ), (
+                    f"`tool_format` must be a string for provider {provider!r}, "
+                    f"model {m.get('id')!r}: {tool_format!r}"
+                )
+                assert tool_format in {"openai", "anthropic", "gemini", "none"}, (
+                    "`tool_format` must be one of {'openai', 'anthropic', 'gemini', 'none'} "
+                    f"for provider {provider!r}, model {m.get('id')!r}: {tool_format!r}"
+                )
+
+                assert isinstance(
+                    system_message, str
+                ), (
+                    f"`system_message` must be a string for provider {provider!r}, "
+                    f"model {m.get('id')!r}: {system_message!r}"
+                )
+                assert system_message in {
+                    "developer-role",
+                    "system-role",
+                    "separated",
+                    "none",
+                }, (
+                    "`system_message` must be one of "
+                    "{'developer-role', 'system-role', 'separated', 'none'} "
+                    f"for provider {provider!r}, model {m.get('id')!r}: {system_message!r}"
+                )
+
+                assert isinstance(
+                    fim, bool
+                ), (
+                    f"`fim` must be a bool for provider {provider!r}, "
+                    f"model {m.get('id')!r}: {fim!r}"
+                )
+    finally:
+        tmpdir.cleanup()

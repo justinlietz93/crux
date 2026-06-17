@@ -24,7 +24,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from ...service import db as _db
 
 
 def _now_iso() -> str:
@@ -53,6 +52,8 @@ def load_observed(provider: str, providers_root: Optional[object] = None) -> Dic
         providers_root: Ignored; present for backward compatibility.
     """
     try:
+        from ...service import db as _db  # lazy: avoid import-time inner->outer edge
+
         _db.ensure_initialized()
         return _db.load_observed_capabilities(provider)
     except Exception:
@@ -78,6 +79,8 @@ def record_observation(
         providers_root: Ignored; present for backward compatibility.
     """
     try:
+        from ...service import db as _db  # lazy: avoid import-time inner->outer edge
+
         _db.ensure_initialized()
         _db.record_observed_capability(
             provider, model_id, feature, value, updated_at=_now_iso()

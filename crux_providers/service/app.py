@@ -262,3 +262,9 @@ def get_app() -> FastAPI:
     testing.
     """
     return app
+
+
+# Register the streaming route on `app`. Placed at the bottom so `app` exists
+# before chat_stream imports it. Importing this module is what serves the API
+# and attaches /api/chat/stream; inner layers never trigger this path.
+from . import chat_stream  # noqa: E402,F401

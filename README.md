@@ -3,6 +3,8 @@
 
 ![alt text](https://raw.githubusercontent.com/justinlietz93/crux/main/crux_providers/assets/crux_banner.jpg)
 
+<h1 align="center">USB-C for LLMs.</h1>
+
 ***A reliable provider-agnostic LLM abstraction layer. Crux offers a turn-key provider client solution using Hybrid Clean Architecture patterns.***
 
 Overview

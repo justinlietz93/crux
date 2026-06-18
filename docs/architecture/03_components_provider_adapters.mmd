@@ -1,0 +1,125 @@
+%% C4 Component Diagram: Provider Adapter Container
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+graph TB
+    classDef interface fill:#08427b,stroke:#052e56,stroke-width:2px,color:#fff
+    classDef component fill:#1168bd,stroke:#0b4884,stroke-width:2px,color:#fff
+    classDef helper fill:#438dd5,stroke:#2e5f8d,stroke-width:2px,color:#fff
+    classDef external fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
+
+    %% Interfaces (Ports)
+    ILLM[ILLMProvider<br/>Protocol<br/>--<br/>chat, get_models]:::interface
+    ISTREAM[ISupportsStreaming<br/>Protocol<br/>--<br/>stream]:::interface
+    IJSON[ISupportsJSONOutput<br/>Protocol<br/>--<br/>chat with json_schema]:::interface
+    ITOOL[ISupportsToolUse<br/>Protocol<br/>--<br/>chat with tools]:::interface
+
+    %% Components (Adapters)
+    subgraph OPENAI [OpenAI Adapter]
+        OAICLIENT[OpenAIProvider<br/>Component<br/>--<br/>Implements: LLMProvider,<br/>SupportsJSONOutput,<br/>ModelListingProvider]:::component
+        OAIMODELS[get_openai_models<br/>Module<br/>--<br/>Fetch model metadata]:::helper
+    end
+
+    subgraph ANTHROPIC [Anthropic Adapter]
+        ANTCLIENT[AnthropicProvider<br/>Component<br/>--<br/>Implements: LLMProvider,<br/>SupportsToolUse,<br/>SupportsStreaming]:::component
+        ANTHELP[chat_helpers<br/>Module<br/>--<br/>Request normalization]:::helper
+        ANTSTREAM[stream_helpers<br/>Module<br/>--<br/>Delta aggregation]:::helper
+        ANTMODELS[get_anthropic_models<br/>Module<br/>--<br/>Fetch model metadata]:::helper
+    end
+
+    subgraph GEMINI [Gemini Adapter]
+        GEMCLIENT[GeminiProvider<br/>Component<br/>--<br/>Implements: LLMProvider,<br/>SupportsJSONOutput,<br/>SupportsStreaming]:::component
+        GEMMODELS[get_gemini_models<br/>Module<br/>--<br/>Fetch model metadata]:::helper
+    end
+
+    subgraph OLLAMA [Ollama Adapter]
+        OLLCLIENT[OllamaProvider<br/>Component<br/>--<br/>Implements: LLMProvider,<br/>SupportsJSONOutput]:::component
+        OLLHELP[helpers<br/>Module<br/>--<br/>Request transformation]:::helper
+        OLLMODELS[get_ollama_models<br/>Module<br/>--<br/>Fetch local models]:::helper
+    end
+
+    subgraph OPENROUTER [OpenRouter Adapter]
+        ORTCLIENT[OpenRouterProvider<br/>Component<br/>--<br/>Implements: LLMProvider,<br/>SupportsStreaming<br/>OpenAI-compatible]:::component
+    end
+
+    subgraph DEEPSEEK [Deepseek Adapter]
+        DSKCLIENT[DeepseekProvider<br/>Component<br/>--<br/>Extends: BaseOpenAIStyleProvider<br/>OpenAI-compatible]:::component
+    end
+
+    subgraph XAI [xAI Adapter]
+        XAICLIENT[XAIProvider<br/>Component<br/>--<br/>Extends: BaseOpenAIStyleProvider<br/>OpenAI-compatible]:::component
+    end
+
+    %% Shared Base
+    BASESTYLE[BaseOpenAIStyleProvider<br/>Abstract Base<br/>--<br/>Common OpenAI-style logic]:::component
+    STREAMADAPTER[BaseStreamingAdapter<br/>Abstract Base<br/>--<br/>Streaming contract]:::component
+    RETRY[RetryConfig<br/>Resilience<br/>--<br/>Exponential backoff]:::helper
+    TIMEOUT[operation_timeout<br/>Context Manager<br/>--<br/>Timeout enforcement]:::helper
+
+    %% External Dependencies
+    OPENAISDK[OpenAI Python SDK]:::external
+    ANTHROPICSDK[Anthropic Python SDK]:::external
+    GEMINISDK[Google GenAI SDK]:::external
+    HTTPLIB[requests/httpx]:::external
+
+    %% Relationships - Interfaces
+    ILLM -.->|implemented by| OAICLIENT
+    ILLM -.->|implemented by| ANTCLIENT
+    ILLM -.->|implemented by| GEMCLIENT
+    ILLM -.->|implemented by| OLLCLIENT
+    ILLM -.->|implemented by| ORTCLIENT
+    ILLM -.->|implemented by| DSKCLIENT
+    ILLM -.->|implemented by| XAICLIENT
+
+    ISTREAM -.->|implemented by| ANTCLIENT
+    ISTREAM -.->|implemented by| GEMCLIENT
+    ISTREAM -.->|implemented by| ORTCLIENT
+
+    IJSON -.->|implemented by| OAICLIENT
+    IJSON -.->|implemented by| GEMCLIENT
+    IJSON -.->|implemented by| OLLCLIENT
+
+    ITOOL -.->|implemented by| ANTCLIENT
+
+    %% Component Dependencies
+    OAICLIENT -->|uses| OAIMODELS
+    OAICLIENT -->|extends| BASESTYLE
+    OAICLIENT -->|SDK| OPENAISDK
+
+    ANTCLIENT -->|uses| ANTHELP
+    ANTCLIENT -->|uses| ANTSTREAM
+    ANTCLIENT -->|uses| ANTMODELS
+    ANTCLIENT -->|extends| STREAMADAPTER
+    ANTCLIENT -->|SDK| ANTHROPICSDK
+
+    GEMCLIENT -->|uses| GEMMODELS
+    GEMCLIENT -->|extends| STREAMADAPTER
+    GEMCLIENT -->|SDK| GEMINISDK
+
+    OLLCLIENT -->|uses| OLLHELP
+    OLLCLIENT -->|uses| OLLMODELS
+    OLLCLIENT -->|HTTP| HTTPLIB
+
+    ORTCLIENT -->|extends| BASESTYLE
+    ORTCLIENT -->|HTTP| HTTPLIB
+
+    DSKCLIENT -->|extends| BASESTYLE
+    DSKCLIENT -->|SDK| OPENAISDK
+
+    XAICLIENT -->|extends| BASESTYLE
+    XAICLIENT -->|SDK| OPENAISDK
+
+    %% Resilience
+    OAICLIENT -->|timeout/retry| TIMEOUT
+    ANTCLIENT -->|timeout/retry| TIMEOUT
+    GEMCLIENT -->|timeout/retry| TIMEOUT
+    OLLCLIENT -->|timeout/retry| TIMEOUT
+    ORTCLIENT -->|timeout/retry| TIMEOUT
+    DSKCLIENT -->|timeout/retry| TIMEOUT
+    XAICLIENT -->|timeout/retry| TIMEOUT
+
+    TIMEOUT -->|uses| RETRY
+
+    %% Notes
+    note1[Key Observations:<br/>- OpenAI-compatible providers<br/>  share BaseOpenAIStyleProvider<br/>- Streaming providers extend<br/>  BaseStreamingAdapter<br/>- All adapters use<br/>  operation_timeout guard<br/>- Helpers isolate provider-specific<br/>  request/response mapping]

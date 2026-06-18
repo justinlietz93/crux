@@ -1,0 +1,106 @@
+%% C4 Component Diagram: Base Abstractions Container
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+graph TB
+    classDef interface fill:#08427b,stroke:#052e56,stroke-width:2px,color:#fff
+    classDef dto fill:#1168bd,stroke:#0b4884,stroke-width:2px,color:#fff
+    classDef factory fill:#438dd5,stroke:#2e5f8d,stroke-width:2px,color:#fff
+    classDef utility fill:#85bbf0,stroke:#5a8fc4,stroke-width:2px,color:#000
+
+    %% Interfaces (Protocols)
+    subgraph INTERFACES [Core Interfaces]
+        ILLM[LLMProvider<br/>Protocol<br/>--<br/>chat, get_models]:::interface
+        ISTREAM[SupportsStreaming<br/>Protocol<br/>--<br/>stream, streaming_supported]:::interface
+        IJSON[SupportsJSONOutput<br/>Protocol<br/>--<br/>chat with json_schema]:::interface
+        IRESPAPI[SupportsResponsesAPI<br/>Protocol<br/>--<br/>Anthropic responses format]:::interface
+        ITOOL[SupportsToolUse<br/>Protocol<br/>--<br/>chat with tools]:::interface
+        IMODEL[ModelListingProvider<br/>Protocol<br/>--<br/>get_models]:::interface
+        IDEFAULT[HasDefaultModel<br/>Protocol<br/>--<br/>default_model property]:::interface
+        IAGENT[IAgentRuntime<br/>Protocol<br/>--<br/>execute_agent]:::interface
+        ICTX[IContextManager<br/>Protocol<br/>--<br/>context lifecycle]:::interface
+    end
+
+    %% DTOs (Data Transfer Objects)
+    subgraph DTOS [DTOs & Models]
+        CHATREQ[ChatRequest<br/>Dataclass<br/>--<br/>messages, model, params]:::dto
+        CHATRESP[ChatResponse<br/>Dataclass<br/>--<br/>content, metadata, tokens]:::dto
+        MSG[Message<br/>Dataclass<br/>--<br/>role, content]:::dto
+        CONTENT[ContentPart<br/>Dataclass<br/>--<br/>text, image, tool_use]:::dto
+        MODELINFO[ModelInfo<br/>Dataclass<br/>--<br/>id, name, capabilities]:::dto
+        METADATA[ProviderMetadata<br/>Dataclass<br/>--<br/>provider, model, latency]:::dto
+        SNAPSHOT[ModelRegistrySnapshot<br/>Dataclass<br/>--<br/>models, timestamp]:::dto
+        ADAPTERPARAM[AdapterParams<br/>Pydantic Model<br/>--<br/>Typed adapter init params]:::dto
+    end
+
+    %% Factory
+    FACTORY[ProviderFactory<br/>Singleton<br/>--<br/>create, supported]:::factory
+
+    %% Utilities & Support
+    subgraph UTILITIES [Utilities]
+        TIMEOUT[TimeoutConfig & operation_timeout<br/>Context Manager<br/>--<br/>Configurable timeouts]:::utility
+        CANCEL[CancellationToken<br/>Cooperative Cancellation<br/>--<br/>Token-based cancel]:::utility
+        STREAM_UTIL[BaseStreamingAdapter<br/>Abstract Base<br/>--<br/>start_stream, finalize_stream]:::utility
+        METRICS[StreamMetrics<br/>Dataclass<br/>--<br/>TTFT, latency, token counts]:::utility
+        RETRY[RetryConfig<br/>Dataclass<br/>--<br/>Max attempts, backoff]:::utility
+        HTTP[HTTPClient<br/>Pooled HTTP Client<br/>--<br/>Connection reuse]:::utility
+        LOGGER[Structured Logger<br/>JSON Formatter<br/>--<br/>provider, operation, stage]:::utility
+        TRACER[Trace Support<br/>Correlation IDs<br/>--<br/>Distributed tracing]:::utility
+    end
+
+    %% Repositories (Interfaces Only)
+    subgraph REPO_INTERFACES [Repository Interfaces]
+        IMODELREG[IModelRegistryRepository<br/>Protocol<br/>--<br/>get_models, save_models]:::interface
+        IKEYS[IKeysRepository<br/>Protocol<br/>--<br/>get_key, set_key]:::interface
+        ICHATLOG[IChatLogRepository<br/>Protocol<br/>--<br/>log_chat, query_logs]:::interface
+        IMETRICS[IMetricsRepository<br/>Protocol<br/>--<br/>record_metrics, query]:::interface
+    end
+
+    %% Error Handling
+    subgraph ERRORS [Error Taxonomy]
+        PERROR[ProviderError<br/>Exception<br/>--<br/>code, message, provider]:::dto
+        ECODE[ErrorCode<br/>Enum<br/>--<br/>TIMEOUT, AUTH, RATE_LIMIT, etc.]:::dto
+        CLASSIFY[ErrorClassifier<br/>Function<br/>--<br/>Classify HTTP/SDK errors]:::utility
+    end
+
+    %% Relationships - DTOs
+    CHATREQ -->|contains| MSG
+    MSG -->|contains| CONTENT
+    CHATRESP -->|contains| METADATA
+    CHATRESP -->|contains| CONTENT
+    SNAPSHOT -->|contains| MODELINFO
+
+    %% Relationships - Interfaces to DTOs
+    ILLM -.->|accepts| CHATREQ
+    ILLM -.->|returns| CHATRESP
+    IMODEL -.->|returns| MODELINFO
+    ISTREAM -.->|yields| CHATRESP
+
+    %% Relationships - Factory
+    FACTORY -->|instantiates| ILLM
+    FACTORY -->|uses| ADAPTERPARAM
+
+    %% Relationships - Utilities
+    ILLM -.->|uses| TIMEOUT
+    ISTREAM -.->|extends| STREAM_UTIL
+    STREAM_UTIL -->|captures| METRICS
+    TIMEOUT -->|supports| CANCEL
+    HTTP -->|uses| RETRY
+
+    ILLM -.->|logs via| LOGGER
+    ILLM -.->|traces via| TRACER
+
+    %% Relationships - Error Handling
+    ILLM -.->|raises| PERROR
+    PERROR -->|uses| ECODE
+    RETRY -->|uses| CLASSIFY
+
+    %% Relationships - Repositories
+    FACTORY -.->|queries| IKEYS
+    STREAM_UTIL -.->|logs to| ICHATLOG
+    STREAM_UTIL -.->|records to| IMETRICS
+    FACTORY -.->|reads from| IMODELREG
+
+    %% Notes
+    note1[Architecture Notes:<br/>- All interfaces are Protocols<br/>  (structural subtyping)<br/>- DTOs are immutable dataclasses<br/>- Factory uses late binding<br/>  (importlib)<br/>- Repositories follow<br/>  interface segregation<br/>- Errors use taxonomy<br/>  for classification]

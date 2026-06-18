@@ -1,0 +1,62 @@
+%% C4 Context Diagram: Crux Providers System
+%% Repository: justinlietz93/crux
+%% Commit: 5f656cd2c1962d2bde2dcfa17252b1821885c998
+%% Generated: 2025-12-05
+
+graph TB
+    classDef user fill:#08427b,stroke:#052e56,stroke-width:2px,color:#fff
+    classDef system fill:#1168bd,stroke:#0b4884,stroke-width:4px,color:#fff
+    classDef external fill:#999999,stroke:#666666,stroke-width:2px,color:#fff
+    classDef storage fill:#438dd5,stroke:#2e5f8d,stroke-width:2px,color:#fff
+
+    %% Users
+    SDK[SDK Consumer<br/>Python Applications]:::user
+    CLI[CLI User<br/>Developer/DevOps]:::user
+    API[API Client<br/>Service/Application]:::user
+
+    %% Main System
+    CRUX[Crux Providers<br/>LLM Abstraction Layer<br/>--<br/>Provider-agnostic<br/>chat/streaming API]:::system
+
+    %% External Systems
+    OPENAI[OpenAI API<br/>GPT Models]:::external
+    ANTHROPIC[Anthropic API<br/>Claude Models]:::external
+    GEMINI[Google Gemini API<br/>Gemini Models]:::external
+    OLLAMA[Ollama<br/>Local LLM Runtime]:::external
+    OPENROUTER[OpenRouter API<br/>Multi-Provider Gateway]:::external
+    DEEPSEEK[Deepseek API<br/>Deepseek Models]:::external
+    XAI[xAI API<br/>Grok Models]:::external
+
+    %% Storage
+    SQLITE[SQLite Database<br/>Model Registry, Chat Logs,<br/>Metrics, Key Vault]:::storage
+    LOGS[Structured Logs<br/>JSON Format]:::storage
+    METRICS[Metrics Sink<br/>Prometheus/OTLP]:::storage
+
+    %% Relationships - Users to System
+    SDK -->|"import crux_providers<br/>create(provider).chat()"| CRUX
+    CLI -->|"python -m crux_providers.service.cli<br/>chat/benchmark/models"| CRUX
+    API -->|"HTTP POST /v1/chat<br/>FastAPI REST"| CRUX
+
+    %% Relationships - System to Providers
+    CRUX -->|"HTTP/SDK<br/>Chat requests"| OPENAI
+    CRUX -->|"HTTP/SDK<br/>Chat requests"| ANTHROPIC
+    CRUX -->|"HTTP/SDK<br/>Chat requests"| GEMINI
+    CRUX -->|"HTTP<br/>Chat requests"| OLLAMA
+    CRUX -->|"HTTP<br/>Chat requests"| OPENROUTER
+    CRUX -->|"HTTP/SDK<br/>Chat requests"| DEEPSEEK
+    CRUX -->|"HTTP/SDK<br/>Chat requests"| XAI
+
+    %% Relationships - System to Storage
+    CRUX -->|"Read/Write<br/>Model metadata,<br/>API keys, logs"| SQLITE
+    CRUX -->|"Emit<br/>Structured JSON"| LOGS
+    CRUX -.->|"Export (optional)<br/>Metrics"| METRICS
+
+    %% Notes
+    note1[Key Interactions:<br/>- SDK: Direct Python import<br/>- CLI: Interactive shell + batch ops<br/>- API: RESTful HTTP endpoints<br/>- All providers accessed via<br/>  unified LLMProvider interface]
+
+    %% Legend
+    subgraph Legend
+        L1[User/Actor]:::user
+        L2[Crux System]:::system
+        L3[External System]:::external
+        L4[Storage/Sink]:::storage
+    end
